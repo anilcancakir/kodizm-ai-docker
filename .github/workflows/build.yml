@@ -50,3 +50,5 @@ jobs:
             ghcr.io/anilcancakir/kodizm-ai-docker:sha-${{ github.sha }}
           cache-from: type=registry,ref=ghcr.io/anilcancakir/kodizm-ai-docker:buildcache
           cache-to: type=registry,ref=ghcr.io/anilcancakir/kodizm-ai-docker:buildcache,mode=max
+          secrets: |
+            github_token=${{ secrets.GITHUB_TOKEN }}

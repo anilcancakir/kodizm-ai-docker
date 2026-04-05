@@ -335,7 +335,9 @@ RUN set -euo pipefail && \
 # ---------------------------------------------------------------------------
 # Stage 10: Java via mise + build tools
 # ---------------------------------------------------------------------------
-RUN set -euo pipefail && \
+RUN --mount=type=secret,id=github_token \
+    set -euo pipefail && \
+    if [ -f /run/secrets/github_token ]; then export GITHUB_TOKEN=$(cat /run/secrets/github_token); fi && \
     mise use --global java@${JAVA_24} && \
     mise use --global java@${JAVA_21} && \
     mise use --global java@${JAVA_17} && \
