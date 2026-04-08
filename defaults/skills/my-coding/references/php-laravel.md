@@ -1,50 +1,28 @@
 # PHP / Laravel Conventions
 
-## Version Adaptability
+## PHP 7.4
 
-Check `composer.json` → `require.php` to detect PHP version. Examples target PHP 8.2+. Apply fallbacks for older versions:
-
-**PHP 7.4** — No promoted props, no enums, no match, no union types:
+No promoted props, no enums, no match, no union types:
 
 ```php
-class ProductService
+// Manual constructor assignment
+public function __construct(SkillDiscovery $discovery)
 {
-    /** @var SkillDiscovery */
-    protected $discovery;
-
-    public function __construct(SkillDiscovery $discovery)
-    {
-        $this->discovery = $discovery;
-    }
+    $this->discovery = $discovery;
 }
 
-// Enums → class constants + validation
-class SubscriptionStatus
-{
-    public const ACTIVE = 'active';
-    public const INACTIVE = 'inactive';
-
-    /** @var string[] */
-    public const ALL = [
-        self::ACTIVE,
-        self::INACTIVE,
-    ];
-
-    public static function isValid(string $value): bool
-    {
-        return in_array($value, self::ALL, true);
-    }
-}
+// Enums → class constants
+public const ACTIVE = 'active';
+public const ALL = [self::ACTIVE, self::INACTIVE];
 
 // Union types → PHPDoc
-/**
- * @param string|int $identifier
- * @return Product|null
- */
+/** @param string|int $identifier */
 public function find($identifier) { ... }
 ```
 
-**PHP 8.0** — Promoted props, match, union types, named args. NO enums, NO readonly:
+## PHP 8.0
+
+Promoted props, match, union types, named args. NO enums, NO readonly:
 
 ```php
 public function __construct(
@@ -60,11 +38,84 @@ return match ($status) {
 public function find(string|int $identifier): ?Product
 ```
 
-**PHP 8.1+** — Backed enums, readonly properties, intersection types.
+## PHP 8.1+
 
-**PHP 8.2+** — readonly class, standalone null/true/false types, DNF types.
+Backed enums, readonly properties, intersection types, fibers.
 
-Style principles (docblocks, multi-line, clean imports, TDD) are version-independent. Only syntax features adapt.
+## PHP 8.2+
+
+readonly class, standalone null/true/false types, DNF types.
+
+## PHP 8.4+
+
+Property hooks (virtual/backed), asymmetric visibility, `new` without parens, array functions:
+
+```php
+// Property hooks — get/set on class properties
+class Product extends Model
+{
+    public string $fullName {
+        get => "{$this->firstName} {$this->lastName}";
+    }
+    public string $slug {
+        set(string $value) => strtolower(trim($value));
+    }
+}
+
+// Asymmetric visibility — public read, restricted write
+class Settings
+{
+    public function __construct(
+        public private(set) string $apiKey,
+        public protected(set) int $timeout = 30,
+    ) {}
+}
+
+// new without parentheses — chainable
+$name = new ReflectionClass(Product::class)->getName();
+
+// New array functions
+$first = array_find($items, fn($v) => $v->isActive());
+$hasAdmin = array_any($users, fn($u) => $u->isAdmin());
+$allValid = array_all($entries, fn($e) => $e->isValid());
+
+// #[\Deprecated] attribute — triggers deprecation notice
+#[\Deprecated('Use findByUuid() instead', since: '2.1')]
+public function findById(int $id): ?Product { ... }
+
+// Implicit nullable removed — explicit ?Type required
+public function setName(?string $name): void  // correct
+// public function setName(string $name = null): void  // deprecated
+```
+
+## PHP 8.5+
+
+Pipe operator, clone with overrides, `#[\NoDiscard]`, array_first/array_last, final property promotion:
+
+```php
+// Pipe operator — left-to-right function composition
+$result = $input
+    |> trim(...)
+    |> strtolower(...)
+    |> fn($s) => str_replace(' ', '-', $s);
+
+// Clone with property overrides
+$usd = new Money(1000, 'USD');
+$eur = clone $usd with {currency: 'EUR'};
+
+// #[\NoDiscard] — warns if return value is ignored
+#[\NoDiscard('Check the result for errors')]
+public function save(): Result { ... }
+
+// array_first / array_last — no callback needed
+$first = array_first($items);
+$last = array_last($items);
+
+// Final property promotion — prevents override in child classes
+public function __construct(
+    public final string $id,
+) {}
+```
 
 ---
 
@@ -179,17 +230,11 @@ class ProductController extends Controller
         return new ProductResource($product);
     }
 
-    /** Show a product with authorization and eager-loaded relations. */
+    /** Show with authorization and eager-loaded relations. */
     public function show(Product $product): ProductResource
     {
         Gate::authorize('view', $product);
-        $product->load(
-            'productType.icon',
-            'barcodes',
-            'productLocations.location.icon',
-            'tags',
-        );
-
+        $product->load('productType.icon', 'barcodes', 'tags');
         return new ProductResource($product);
     }
 }
@@ -252,6 +297,13 @@ class Product extends Model
 ```php
 class ProductTranslationService
 {
+    // Promoted constructor (preferred for services/packages)
+    public function __construct(
+        protected SkillDiscovery $discovery,
+        protected bool $cacheEnabled = true,
+        protected int $cacheTtl = 3600,
+    ) {}
+
     /** Orchestrate finding or creating a translated product. */
     public function findOrCreate(Team $team, User $user, array $data): GlobalProduct
     {
@@ -284,11 +336,22 @@ class ProductTranslationService
     private function findBaseProduct(?int $id, ?string $barcode): ?GlobalProduct { ... }
     private function syncBarcodes(GlobalProduct $product, Collection $barcodes): void { ... }
 }
+
+// readonly class for value objects
+readonly class Skill
+{
+    public function __construct(
+        public string $name,
+        public string $description,
+        public array $tools,
+    ) {}
+}
 ```
 
 - One public orchestrator + private helpers
 - Error: `catch (Throwable)` → `report()` → throw user-friendly
 - Deps via constructor OR method params
+- Promoted constructor preferred; `readonly class` for value objects
 
 ---
 
@@ -305,23 +368,10 @@ class StoreRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'name' => [
-                'required',
-                'string',
-                'max:255',
-            ],
-            'productType.id' => [
-                'nullable',
-                'exists:product_types,id,team_id,' . auth()->user()->current_team_id,
-            ],
-            'barcodes' => [
-                'nullable',
-                'array',
-            ],
-            'barcodes.*.code' => [
-                'nullable',
-                new BarcodeRule,
-            ],
+            'name' => ['required', 'string', 'max:255'],
+            'productType.id' => ['nullable', 'exists:product_types,id,team_id,' . auth()->user()->current_team_id],
+            'barcodes' => ['nullable', 'array'],
+            'barcodes.*.code' => ['nullable', new BarcodeRule],
         ];
     }
 }
@@ -402,16 +452,10 @@ enum SubscriptionStatus: string implements HasLabel
         };
     }
 
-    /** Try to create from user input with alias support. */
+    /** Try from input with alias support. */
     public static function tryFromInput(mixed $value): ?self
     {
-        if ($value instanceof self) {
-            return $value;
-        }
-
-        $normalized = strtolower(trim($value));
-
-        return match ($normalized) {
+        return match (strtolower(trim($value))) {
             'lite', 'lazy' => self::Lite,
             'full', 'eager' => self::Full,
             default => null,
@@ -423,34 +467,6 @@ enum SubscriptionStatus: string implements HasLabel
 - ALWAYS string-backed, UPPER_SNAKE case names
 - Implement `HasLabel` for UI
 - `tryFromInput` with alias support
-
----
-
-## Constructor Patterns
-
-```php
-// Promoted (preferred for services/packages)
-public function __construct(
-    protected SkillDiscovery $discovery,
-) {}
-
-// Multiple promoted
-public function __construct(
-    protected array $paths,
-    protected bool $cacheEnabled = true,
-    protected int $cacheTtl = 3600,
-) {}
-
-// readonly class for value objects
-readonly class Skill
-{
-    public function __construct(
-        public string $name,
-        public string $description,
-        public array $tools,
-    ) {}
-}
-```
 
 ---
 
@@ -472,29 +488,17 @@ use Throwable;
 ## Comment Style
 
 ```php
-/** @mixin Product */
+/** @mixin Product */                              // Resource type hint
 class ProductResource extends JsonResource
 
-/**
- * @property string $id
- * @property-read Collection<int, Barcode> $barcodes
- * @method static Builder<static>|Product newQuery()
- */
-class Product extends Model
+/** @property string $id */                        // Model property hints
+/** @property-read Collection<int, Barcode> $barcodes */
 
-/** Determine if the skill has any tools. */
+/** Determine if the skill has any tools. */       // Single-line docblock
 public function hasTools(): bool
 
-/**
- * Find an existing translated product or create a new one.
- *
- * @param  Team  $team  The team requesting the product.
- * @param  array  $data  The attributes for lookup/creation.
- * @return GlobalProduct
- *
- * @throws RuntimeException
- */
-public function findOrCreate(Team $team, User $user, array $data): GlobalProduct
+/** @throws RuntimeException */                    // Multi-param: full block
+public function findOrCreate(Team $team, array $data): GlobalProduct
 ```
 
 ---
@@ -508,26 +512,10 @@ class SkillsServiceProvider extends ServiceProvider
     {
         $this->mergeConfigFrom(__DIR__ . '/../config/skills.php', 'skills');
 
-        if (! config('skills.enabled', true)) {
-            return;
-        }
-
-        $this->app->singleton(SkillDiscovery::class, function ($app) {
-            $cacheEnabled = filter_var(
-                config('skills.cache.enabled'),
-                FILTER_VALIDATE_BOOLEAN,
-                FILTER_NULL_ON_FAILURE,
-            );
-
-            if ($cacheEnabled === null) {
-                $cacheEnabled = ! $app->environment('local', 'testing');
-            }
-
-            return new SkillDiscovery(
-                paths: config('skills.paths', [resource_path('skills')]),
-                cacheEnabled: $cacheEnabled,
-            );
-        });
+        $this->app->singleton(SkillDiscovery::class, fn ($app) => new SkillDiscovery(
+            paths: config('skills.paths', [resource_path('skills')]),
+            cacheEnabled: ! $app->environment('local', 'testing'),
+        ));
     }
 
     public function boot(): void
@@ -555,18 +543,5 @@ tests/
 └── Unit/       # Isolated logic (services, value objects)
 ```
 
-- PHPUnit 11 (apps), PHPUnit 10-11 + orchestra/testbench (packages)
-- Factories with dynamic creation/cleanup
 - Naming: `test_{action}_{condition}_{expected_result}`
 - Every test method has `: void` return type
-
----
-
-## Tooling
-
-| Tool | Config | Purpose |
-|------|--------|---------|
-| Laravel Pint | `pint.json` → `{"preset": "laravel"}` | Code style |
-| PHPUnit | `phpunit.xml` | Testing |
-| Composer | `composer.json` | Dependencies, PSR-4 |
-| EditorConfig | `.editorconfig` | Editor settings |

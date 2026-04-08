@@ -1,7 +1,7 @@
 ---
 name: git-master
 description: "Atomic commit architect with convention detection. Analyzes project commit style from instruction files (CLAUDE.md, GEMINI.md, AGENTS.md, copilot-instructions), git history, or falls back to Conventional Commits. Enforces split rules, test pairing, dependency ordering. Use when committing, staging, or preparing git commits."
-when_to_use: "TRIGGER when: commit, stage, git add, ready to commit, save progress, checkpoint work. DO NOT TRIGGER when: push, rebase, squash, blame, bisect, cherry-pick, history search, GitHub API."
+when-to-use: "TRIGGER when: commit, stage, git add, ready to commit, save progress, checkpoint work. DO NOT TRIGGER when: push, rebase, squash, blame, bisect, cherry-pick, history search, GitHub API."
 ---
 
 # Git Master
@@ -28,35 +28,23 @@ Atomic commit architect. Each logical unit of work gets its own commit — commi
 | Different concerns (UI/logic/config/test) | SPLIT |
 | New file vs modification | SPLIT |
 
-**Combine ONLY when ALL true:**
-- Exact same atomic unit (function + its test)
-- Splitting would break compilation
-- One-sentence justification exists
+**Combine ONLY when ALL true:** exact same atomic unit (function + its test), splitting would break compilation, one-sentence justification exists.
 
 ## Phase 1: Context Gathering
 
-Execute in parallel:
+Run in parallel:
 
-```bash
-# State
-git status
-git diff --staged --stat
-git diff --stat
-
-# History (for style detection)
-git log -20 --pretty=format:"%s"
-
-# Branch
-git branch --show-current
-```
+- `git status`
+- `git diff --staged --stat`
+- `git diff --stat`
+- `git log -20 --pretty=format:"%s"`
+- `git branch --show-current`
 
 ## Phase 2: Convention Detection
 
 **First match wins — stop searching after a match.**
 
 ### Step 1: AI agent instruction files
-
-Check repository root for explicit commit convention rules:
 
 | File | Source |
 |------|--------|
@@ -99,7 +87,7 @@ else            → PLAIN
 
 ### Step 4: Default fallback
 
-Fewer than 5 commits in repo → Conventional Commits: `feat:`, `fix:`, `refactor:`, `chore:`, `docs:`, `test:`.
+Fewer than 5 commits → Conventional Commits: `feat:`, `fix:`, `refactor:`, `chore:`, `docs:`, `test:`.
 
 ### Output (mandatory before proceeding)
 
@@ -117,13 +105,9 @@ Reference examples from log:
 
 ## Phase 3: Commit Planning
 
-**Calculate minimum commits:**
+**Minimum commits:** `max(ceil(file_count / 3), hard_rule_minimum)`
 
-```
-min_commits = max(ceil(file_count / 3), hard_rule_minimum)
-
-Hard rule:  3+ → 2 min  |  5+ → 3 min  |  10+ → 5 min
-```
+Hard rule: 3+ → 2 min | 5+ → 3 min | 10+ → 5 min
 
 **Split order:** directory/module first → then by concern.
 
@@ -139,8 +123,6 @@ __tests__/*.ts ↔ *.ts      tests/*.php ↔ src/*.php
 
 ### 3+ Files Justification
 
-Any commit with 3+ files needs a ONE-sentence justification:
-
 ```
 VALID:   "implementation + its direct test file"
 VALID:   "migration + model change (breaks without both)"
@@ -149,8 +131,6 @@ INVALID: "part of the same task"
 ```
 
 ### Dependency Ordering
-
-Commit foundations first:
 
 ```
 Level 0: Utilities, constants, type definitions
@@ -178,12 +158,7 @@ COMMIT 2: [message]
 Order: Commit 1 → 2 (Level 0 → Level 2)
 ```
 
-**Validate before executing:**
-- Each commit ≤4 files (or justified)
-- Messages match detected style
-- Tests paired with implementation
-- Total commits ≥ min_commits
-- Fail → REPLAN
+Validate before executing: each commit ≤4 files (or justified), messages match style, tests paired, total ≥ min_commits. Fail → REPLAN.
 
 ## Phase 4: Execute
 

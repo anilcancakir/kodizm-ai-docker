@@ -15,9 +15,6 @@
 | Test file | `{feature}_test.dart` | `background_parser_test.dart` |
 | Extension | `{Domain}Extension` | `WindContextExtension` |
 | Utility function | `w` prefix | `wColor()`, `wSpacing()` |
-
----
-
 ## Directory Structure (SDK/Package)
 
 ```
@@ -43,9 +40,6 @@ lib/
 - Single barrel file — users NEVER import from `src/`
 - One file per class
 - File snake_case matches class: `wind_style.dart` → `WindStyle`
-
----
-
 ## Type Declarations
 
 ```dart
@@ -57,9 +51,6 @@ WindStyle parse(WindStyle styles, List<String>? classes, WindContext context)
 
 enum WindDisplayType { block, flex, grid, wrap }
 ```
-
----
-
 ## Immutability Pattern
 
 ```dart
@@ -88,9 +79,6 @@ class WindStyle {
 ```
 
 - `@immutable` on data classes. All fields `final`. `const` constructor. Mutate via `copyWith`.
-
----
-
 ## Constructor Patterns
 
 ```dart
@@ -113,9 +101,6 @@ const WDiv({
       'WDiv: Cannot provide both child and children.',
     );
 ```
-
----
-
 ## Widget Architecture
 
 ```dart
@@ -151,9 +136,6 @@ class WText extends StatelessWidget {
 - StatelessWidget for display-only, StatefulWidget for interactive
 - `WindParser.parse()` in `build()`, never cached in state
 - Numbered step comments in build methods
-
----
-
 ## Composition Pipeline
 
 ```dart
@@ -190,9 +172,6 @@ Widget _buildCompositionPipeline({
 
 - Conditional wrap — skip if null
 - Log every step. Order: decoration → padding → margin → alignment → flex
-
----
-
 ## State Management
 
 ```dart
@@ -207,9 +186,6 @@ final Set<String> activeStates = {
 - InheritedWidget + ChangeNotifier
 - Theme via custom widget, not stock ThemeData
 - Platform detection via static service class
-
----
-
 ## Barrel File
 
 ```dart
@@ -222,9 +198,6 @@ export 'src/widgets/w_div.dart';
 export 'src/widgets/w_text.dart';
 export 'src/theme/wind_theme.dart';
 ```
-
----
-
 ## Strategy Pattern (Parsers)
 
 ```dart
@@ -243,9 +216,6 @@ class BackgroundParser implements WindParserInterface {
   }
 }
 ```
-
----
-
 ## Caching Strategy
 
 ```dart
@@ -253,9 +223,6 @@ static final Map<String, WindStyle> _styleCache = {};
 // Key = className + breakpoint + brightness + platform + states
 // Invalidation: automatic per unique context combination
 ```
-
----
-
 ## Comment Style
 
 ```dart
@@ -280,31 +247,9 @@ class WDiv extends StatelessWidget {
 - Code examples in every class-level doc
 - Bold for feature categories
 
----
-
 ## Testing
 
-```
-test/
-├── parser/parsers/           # Parser unit tests
-├── widgets/w_div/            # Widget tests
-├── state/                    # State provider tests
-└── theme/                    # Theme tests
-```
-
-- Mirror `lib/src/` structure
+- Mirror `lib/src/` structure: `test/parser/`, `test/widgets/`, `test/state/`, `test/theme/`
 - `tester.pumpWidget()` with `wrapWithTheme()` helper
 - Use `pump(Duration(...))` NOT `pumpAndSettle()` for animations
 - `createTestContext()` for parser tests
-
----
-
-## Tooling
-
-| Tool | Config | Purpose |
-|------|--------|---------|
-| flutter_lints | `analysis_options.yaml` | Static analysis |
-| pub | `pubspec.yaml` | Dependencies |
-| dart format | built-in | Formatting |
-
-- Minimal external dependencies. Prefer built-in framework features. Latest stable versions.

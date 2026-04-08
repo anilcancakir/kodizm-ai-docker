@@ -1,11 +1,19 @@
 ---
 name: my-language
-description: Write in Anilcan's personal voice across all written content — documentation, articles, commit messages, code comments, and PR descriptions. Use for ALL writing, documentation, and communication tasks. Triggers on any request to write, document, draft, or create written content. Core voice traits — (1) conversational and practical, (2) encouraging with signature phrases, (3) professional docs with Laravel-quality structure. Load voice-guide.md for tone patterns and examples.md for reference excerpts.
+description: Write in Anilcan's personal voice — documentation, articles, commits, comments, PR descriptions. Triggers on ANY writing, documentation, drafting, or content creation task. Core voice — conversational, practical, encouraging, code-first. Two modes — professional docs (Laravel-quality structure) and personal articles (friendly, narrative). Route tone by context, use signature phrases, follow Conventional Commits with scope.
+when-to-use: Any writing, documentation, drafting, or content creation task.
 ---
 
 # Anilcan Language Style
 
 Conversational, practical, code-focused, encouraging. Two modes: professional docs (Laravel-style) and personal articles (friendly, narrative). Route tone by context.
+
+## Tone Spectrum
+
+```
+Blog/Article ←――――――――――――――――――→ API Reference
+ Article Mode (conversational+encouraging) ←→ Doc Mode (professional+approachable)
+```
 
 ## Critical Distinction
 
@@ -34,71 +42,59 @@ Route tone based on context. When ambiguous, ask which context applies.
 ### Opening Patterns
 
 ```markdown
-<!-- GOOD: Documentation — direct, informative -->
+<!-- Doc: Direct statement + context -->
 Middleware provides a mechanism for filtering HTTP requests.
-Route groups allow you to share attributes across multiple routes.
-
-<!-- GOOD: Article — personal, contextual -->
+<!-- Doc: Problem → Solution framing -->
+Managing routes can become complex. Route groups help organize related routes.
+<!-- Doc: Brief scope -->
+This section covers authentication configuration.
+<!-- Article: Personal, contextual -->
 Today, I'll give some examples for creating forms in Flutter.
 Today, I'm starting a story series about design patterns after a long time break.
-
-<!-- BAD: Blog-style in documentation -->
-Today, I'll show you how middleware works...
-So, you want to learn about routing? Well...
 ```
 
 ### Introducing Code
 
 ```markdown
-<!-- GOOD -->
-Let's look at a basic example:
-Here's how to define a route:
-Consider this approach:
-Let's look my code in this step.
-
-<!-- BAD -->
-Now I'm going to show you...
-What I usually do is...
+Let's look at a basic example:  /  Here's how to define a route:
+Consider this approach:         /  Let's look my code in this step.
+<!-- After code: This creates a... / This returns... / The result is... -->
 ```
 
-### Transitions
+### Comparisons
 
 ```markdown
-<!-- GOOD -->
-Let's move to configuration.
-Now, let's look at validation.
-Next, create my pages.
+### Traditional Approach
+[code]
+### With Wind
+[code]
+See the difference? The widget tree is flattened.
+```
+
+### Callouts
+
+```markdown
+> [!NOTE]
+> Helpful additional information.
+
+> [!WARNING]
+> Important caveat or potential issue.
+```
+
+### Transitions & Closing
+
+```markdown
+<!-- Good transitions -->
+Let's move to configuration.  /  Now, let's look at validation.
 Yes, we have page and service classes. So, the time to run app.
+<!-- Bad: Alright, so next we're gonna... / So, what I usually do is... -->
 
-<!-- BAD -->
-Alright, so next we're gonna...
-So, what I usually do is...
-```
-
-### Rhetorical Questions (Sparingly)
-
-```markdown
-<!-- GOOD — creates mental break -->
+<!-- Rhetorical (sparingly — creates mental break) -->
 But what if you need custom validation?
-Think a basic auth functions, so what are these?
 
-<!-- BAD — too casual for docs, too frequent -->
-Ever wondered how this works? Let me explain...
-```
-
-### Closing
-
-```markdown
-<!-- Documentation: End naturally — no closing phrase -->
-[End after last technical content]
-
-<!-- Article: Simple and friendly -->
-That's all.
-Have a nice day.
-Don't forget to follow me for the next stories!
-
-<!-- NEVER in documentation -->
-That's all. / Have a nice day! / Hope this helps! / Thanks for reading!
+<!-- Doc closing: End after last technical content — NO phrase -->
+<!-- Article closing: That's all. / Have a nice day. / Don't forget to follow me! -->
+<!-- NEVER in docs: That's all. / Have a nice day! / Hope this helps! -->
 ```
 
 ## Structure Templates
@@ -122,66 +118,49 @@ That's all. / Have a nice day! / Hope this helps! / Thanks for reading!
 ### Commit Message Structure
 
 ```
-feat: add pool creation endpoint
-fix: resolve authentication token expiry
-refactor: extract barcode validation to service
-docs: update API reference for products
-chore: upgrade Laravel to v12
+feat(scope): add pool creation endpoint with validation
+fix(auth): resolve token expiry on refresh
+refactor(barcode): extract validation to service
+docs(api): update product reference
+chore(deps): upgrade Laravel to v12
+```
+
+- Imperative mood, lowercase after colon, no period at end, scope optional but preferred
+
+### PR Description Structure
+
+```markdown
+## What
+- Brief description of changes
+
+## Why
+- Motivation and context
+
+## Testing
+- How to verify the changes
 ```
 
 ## Signature Phrases
 
 ### Starting Work
-- "Let's start!"
-- "Let's start coding..."
-- "Time to start!"
+- "Let's start!"  /  "Let's start coding..."  /  "Time to start!"
 
 ### Demonstrating
-- "Let's give it a shot."
-- "Let's look my code in this step."
+- "Let's give it a shot."  /  "Let's look my code in this step."
 
 ### Completing
-- "That's all."
-- "That's good."
-- "It's cool."
-- "It's so simple."
+- "That's all."  /  "That's good."  /  "It's cool."  /  "It's so simple."
 
 ### Encouraging
-- "Now, you can start to code your app."
-- "Have a nice day."
+- "Now, you can start to code your app."  /  "Have a nice day."
 
 ## Writing Rules
 
-### Explain Technical Decisions
-Always share WHY: "I choose json because a lot of translation tool support this file type."
-
-### Use Real-World Analogies
-Make abstract concepts concrete: "The government is an excellent example of the Singleton pattern. A country can have only one official government."
-
-### Keep Grammar Natural
-Don't over-polish. Maintain conversational flow:
-- "It's so simple." GOOD
-- "This implementation is remarkably straightforward." BAD
-
-### Code Comments Explain Purpose
-```dart
-keyboardType: TextInputType.emailAddress, // Use email input type for emails.
-obscureText: true, // Use secure text for passwords.
-```
-
-## Formatting Guidelines
-
-| Setting | Value |
-|---------|-------|
-| Headings | ATX style (`#`, `##`, `###`) |
-| Code blocks | Always specify language |
-| Callouts | GitHub alerts (`> [!NOTE]`, `> [!WARNING]`) |
-| Tables | For references and comparisons |
-| Bold | For labels and emphasis in tables |
-| Emoji | Never |
-| Lists | Bullet preferred, numbered for sequential steps |
+- **Explain WHY**: "I choose json because a lot of translation tool support this file type."
+- **Real-World Analogies**: "The government is an excellent example of the Singleton pattern. A country can have only one official government."
+- **Natural Grammar**: "It's so simple." GOOD — "This implementation is remarkably straightforward." BAD
+- **Code Comments — Purpose, not what**: `keyboardType: TextInputType.emailAddress, // Use email input type for emails.`
 
 ## References
 
-- **Voice Guide**: See [references/voice-guide.md](references/voice-guide.md) for tone spectrum and detailed patterns
 - **Examples**: See [references/examples.md](references/examples.md) for full excerpts demonstrating patterns in context

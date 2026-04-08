@@ -43,8 +43,6 @@ of the individuals who form governments, the title, "The Government of X",
 is a global point of access that identifies the group of people in charge.
 ```
 
----
-
 ## Rhetorical Question Patterns
 
 ### Introducing a Problem
@@ -68,8 +66,6 @@ Think a basic auth functions, so what are these? Login and logout
 (Register can be optional if you uses Firebase).
 ```
 
----
-
 ## Step-by-Step Progression
 
 ```
@@ -86,8 +82,6 @@ Next, create my pages. I said, I have two pages in this example.
 
 Yes, we have page and service classes for app. So, the time to run app.
 ```
-
----
 
 ## Code Demonstration Flow
 
@@ -107,32 +101,6 @@ widget state in our class.
 
 ---
 
-## Transition Phrases Collection
-
-### Starting Work
-- "Let's start!"
-- "Let's start by creating..."
-- "Time to start!"
-- "Let's start coding..."
-
-### Moving Forward
-- "Next, [action]"
-- "Now, we can start to..."
-- "Now, you can start to code your app."
-- "Yes, we have [X] now. So, [next step]"
-
-### Testing/Demonstrating
-- "Let's give it a shot."
-- "Let's give a shot."
-
-### Completing Sections
-- "That's all."
-- "That's good."
-- "It's cool."
-- "It's so simple."
-
----
-
 ## Closing Examples
 
 ### Simple Closing
@@ -140,22 +108,6 @@ widget state in our class.
 ```
 That's all.
 ```
-
-### With Follow-up
-
-```
-Don't forget to follow me for the next stories!
-
-Have a nice day.
-```
-
-### With Source Reference
-
-```
-You can look the full source code in this repository.
-```
-
----
 
 ## Inline Explanation Style
 
@@ -172,8 +124,6 @@ new TextFormField(
 ),
 ```
 
----
-
 ## Topic Listing Pattern
 
 ```
@@ -188,8 +138,6 @@ The topics
 Let's start by creating a Flutter project.
 ```
 
----
-
 ## Prerequisite Handling
 
 ```
@@ -197,8 +145,6 @@ First of all, if you are new in Flutter, you can look my old post for
 starting and creating a new Flutter project. I'll not show to create a
 new Flutter project in this post.
 ```
-
----
 
 ## Explaining Technical Decisions
 

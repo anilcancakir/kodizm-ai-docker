@@ -1,6 +1,7 @@
 ---
 name: my-coding
-description: Enforce Anilcan's coding style, conventions, and architectural philosophy when writing code in ANY language. Code must look like artisanship — clean, typed, documented, tested, linter-clean. Use for ALL code generation, implementation, refactoring, and code review tasks. Triggers on any request to write, modify, review, or generate code. Core tenets — (1) Laravel-inspired OOP even outside PHP, (2) 120-char max width, (3) multi-line everything, (4) trailing commas, (5) full type hints + docblocks, (6) TDD red-green-refactor, (7) English only, (8) zero linter violations. Load language-specific references (php-laravel.md, dart-flutter.md) when working in those languages.
+description: Coding style enforcement for ALL code — PHP, Dart, TypeScript, Go. Triggers on any code generation, implementation, refactoring, or review task. Key rules — no declare(strict_types=1), 120-char max, multi-line everything with trailing commas, full types + docblocks, TDD red-green-refactor, English only, zero linter violations, Laravel-inspired OOP universally. Load language-specific references (php-laravel.md, dart-flutter.md) when working in those languages.
+when-to-use: Any request to write, modify, review, or generate code in any language. Triggers on implementation, refactoring, code review, and TDD tasks.
 ---
 
 # Anilcan Coding Style
@@ -21,58 +22,38 @@ Laravel's API design — expressive method names, fluent interfaces, clean separ
 
 **PHP version feature gates:**
 
-| Feature | Minimum PHP | Fallback |
-|---------|-------------|----------|
-| Constructor property promotion | 8.0 | Traditional `$this->prop = $prop` in constructor body |
-| Union types (`string\|int`) | 8.0 | PHPDoc `@param string\|int` + runtime checks |
-| Named arguments | 8.0 | Positional arguments with inline comments for clarity |
-| `match` expression | 8.0 | `switch` with strict comparison |
-| Nullsafe operator `?->` | 8.0 | Explicit null checks |
-| Backed enums | 8.1 | Class constants + validation methods |
-| `readonly` properties | 8.1 | `@readonly` doc + private setter discipline |
-| Intersection types (`A&B`) | 8.1 | PHPDoc `@param A&B` |
-| `readonly class` | 8.2 | Individual `readonly` properties (8.1) or immutable by convention |
-| `true`/`false`/`null` standalone types | 8.2 | `bool` with doc annotation |
-| `#[Override]` attribute | 8.3 | `@override` in PHPDoc |
+| Feature | Minimum PHP |
+|---------|-------------|
+| Constructor property promotion, union types, named arguments, `match`, nullsafe `?->` | 8.0 |
+| Backed enums, `readonly` properties, intersection types, fibers | 8.1 |
+| `readonly class`, `true`/`false`/`null` standalone types, DNF types | 8.2 |
+| `#[Override]` attribute, typed class constants, `json_validate()` | 8.3 |
+| Property hooks, asymmetric visibility, `new` without parens, `array_find`/`array_any`/`array_all`, `#[Deprecated]`, implicit nullable deprecation | 8.4 |
+| Pipe operator `\|>`, `clone` with overrides, `#[NoDiscard]`, `array_first`/`array_last`, final property promotion | 8.5 |
 
 **Dart version feature gates:**
 
-| Feature | Minimum Dart | Fallback |
-|---------|-------------|----------|
-| Records `(String, int)` | 3.0 | Custom class / tuple pattern |
-| Patterns / pattern matching | 3.0 | Traditional `if`/`switch` |
-| `sealed class` | 3.0 | Abstract class + factory constructors |
-| Class modifiers (`final`, `interface`, `base`, `mixin`) | 3.0 | Convention + documentation |
+| Feature | Minimum Dart |
+|---------|-------------|
+| Records `(String, int)`, patterns / pattern matching, `sealed class`, class modifiers (`final`, `interface`, `base`, `mixin`) | 3.0 |
 
 The style principles (clean imports, docblocks, multi-line formatting, TDD) apply regardless of version. Only syntax features adapt.
 
 ## Non-Negotiable Rules
 
-### 1. English Only
+### 1. No declare(strict_types=1)
+
+NEVER add `declare(strict_types=1)` to PHP files. It violates project conventions, causes runtime `TypeError` in production with external data, and breaks Laravel's type coercion. Omit the declaration entirely. Type safety is enforced via PHPStan + explicit type declarations, not runtime strict mode.
+
+### 2. English Only
 
 ALL identifiers, comments, docblocks, commit messages, error messages, DB columns — English. No exceptions, regardless of project audience.
 
-### 2. Type Everything
+### 3. Type Everything
 
 Every parameter, return type, and property has an explicit type declaration. No untyped code ships.
 
-```php
-// CORRECT
-public function findOrCreate(Team $team, User $user, array $data): GlobalProduct
-
-// WRONG — missing return type
-public function handle($request) { ... }
-```
-
-```dart
-// CORRECT
-WindStyle parse(WindStyle styles, List<String>? classes, WindContext context)
-
-// WRONG — missing types, using dynamic
-parse(styles, classes, context)
-```
-
-### 3. Document Everything
+### 4. Document Everything
 
 | Scope | Requirement |
 |-------|-------------|
@@ -83,39 +64,11 @@ parse(styles, classes, context)
 
 If a method needs a paragraph of comments, extract it into a named method.
 
-```php
-/**
- * Find an existing translated product or create a new one.
- *
- * @param  Team  $team  The team requesting the product.
- * @param  User  $user  The user making the request.
- * @param  array  $data  The attributes for the product lookup/creation.
- * @return GlobalProduct
- *
- * @throws RuntimeException
- */
-public function findOrCreate(Team $team, User $user, array $data): GlobalProduct
-```
-
-### 4. 120-Character Line Width
+### 5. 120-Character Line Width
 
 No line exceeds 120 characters. Break method signatures, chains, conditionals — everything.
 
-```php
-// CORRECT — broken cleanly
-public function findOrCreate(
-    Team $team,
-    User $user,
-    array $data,
-): GlobalProduct {
-    // ...
-}
-
-// WRONG — exceeds 120 chars
-public function findOrCreate(Team $team, User $user, array $data, string $locale, bool $force = false): GlobalProduct
-```
-
-### 5. Multi-Line Collections — ALWAYS
+### 6. Multi-Line Collections — ALWAYS
 
 Arrays, objects, parameter lists, maps — ALWAYS multi-line. Even with 2 elements. Trailing commas mandatory.
 
@@ -142,23 +95,20 @@ final colors = [
 final colors = [Colors.red, Colors.blue, Colors.green];
 ```
 
-**Why:** Single-line diffs, clean reordering, vertical scannability.
-
-### 6. Clean Imports
+### 7. Clean Imports
 
 Import at the top of the file. NEVER reference classes by full namespace inline.
 
 ```php
 // CORRECT
 use RuntimeException;
-use Throwable;
 throw new RuntimeException('Failed.');
 
 // WRONG — inline namespace
 throw new \RuntimeException('Failed.');
 ```
 
-### 7. TDD — Red, Green, Refactor
+### 8. TDD — Red, Green, Refactor
 
 Write the failing test FIRST. Then implement. Then refactor. Applies to features, bugfixes, and refactors.
 
@@ -168,11 +118,11 @@ Write the failing test FIRST. Then implement. Then refactor. Applies to features
 
 There is no "we'll add tests later." The test comes before the code.
 
-### 8. Linter is Law
+### 9. Linter is Law
 
 Code MUST pass the linter with zero warnings, zero errors. No suppressions (`@ts-ignore`, `@phpstan-ignore`, `// ignore:`). Fix the actual issue.
 
-### 9. Numbered Step Comments
+### 10. Numbered Step Comments
 
 Methods with 3+ logical phases get numbered steps:
 
@@ -199,88 +149,47 @@ public function findOrCreate(Team $team, User $user, array $data): GlobalProduct
 }
 ```
 
-### 10. Enum Everything
+### 11. Enum Everything
 
 Status values, types, categories — ALWAYS backed enums. Never string constants or magic values.
 
-```php
-enum SubscriptionStatus: string
-{
-    case ACTIVE = 'active';
-    case INACTIVE = 'inactive';
-    case CANCELED = 'canceled';
-}
-```
-
-### 11. Thin Controllers + Form Requests
+### 12. Thin Controllers + Form Requests
 
 Controllers validate via Form Request, delegate to Service, return Resource. No business logic. No inline validation.
 
 ```php
-// CORRECT — Form Request + Service + Resource
 public function store(StoreRequest $request): JsonResponse
 {
     $pool = $this->poolService->create($request->validated());
 
     return response()->json(PoolResource::make($pool), 201);
 }
-
-// WRONG — business logic in controller, inline validation
-public function store(Request $request): JsonResponse
-{
-    $validated = $request->validate(['name' => 'required']);
-    $pool = Pool::create([...$validated, 'team_id' => auth()->user()->team_id]);
-    event(new PoolCreated($pool));
-
-    return response()->json($pool, 201);
-}
 ```
 
-### 12. Constructor Dependency Injection
+### 13. Constructor Dependency Injection
 
 Inject dependencies via constructor. Never use facades or service location in class methods.
 
 ```php
-// CORRECT
 public function __construct(
     protected PoolService $poolService,
 ) {}
-
-// WRONG — facade usage inside method
-public function create(array $data): Pool
-{
-    Event::dispatch(new PoolCreated($pool));
-}
 ```
 
-### 13. Guard Clauses Over Nesting
+### 14. Guard Clauses Over Nesting
 
 Use early returns. Never nest conditionals beyond 2 levels.
 
 ```php
-// CORRECT
-public function activate(Pool $pool): void
-{
-    if ($pool->isActive()) {
-        return;
-    }
-
-    if (! $pool->hasMinimumStake()) {
-        throw new InsufficientStakeException($pool);
-    }
-
-    $pool->update(['status' => PoolStatus::Active]);
+if ($pool->isActive()) {
+    return;
 }
 
-// WRONG — deeply nested
-public function activate(Pool $pool): void
-{
-    if (! $pool->isActive()) {
-        if ($pool->hasMinimumStake()) {
-            $pool->update(['status' => PoolStatus::Active]);
-        }
-    }
+if (! $pool->hasMinimumStake()) {
+    throw new InsufficientStakeException($pool);
 }
+
+$pool->update(['status' => PoolStatus::Active]);
 ```
 
 ## Architecture Principles
@@ -288,39 +197,11 @@ public function activate(Pool $pool): void
 | Principle | Rule |
 |-----------|------|
 | Thin Controllers, Fat Services | Controllers validate + return. Business logic in Services. |
-| Composition Over Inheritance | Prefer traits/mixins over deep hierarchies. |
 | Immutable Value Objects | `readonly` (PHP) / `@immutable` (Dart). Mutate via `copyWith`. |
-| Lazy Loading | Load on-demand, not eagerly. |
 | Defensive Config | Always validate inputs. Always provide fallbacks. |
 | Domain Directories | Complex domains get their own top-level directory. |
 | Named Arguments | Use named params for clarity at call sites. |
 | Event-Driven Side Effects | Cross-cutting concerns (notifications, cache, audit) in Listeners. |
-
-## Error Handling
-
-```php
-// PATTERN: catch Throwable → report → throw user-friendly
-try {
-    // business logic
-} catch (Throwable $exception) {
-    report($exception);
-    throw new RuntimeException('User-friendly error message.');
-}
-```
-
-Never: empty catch blocks, swallowed exceptions, untyped catch.
-
-## Formatting Quick Reference
-
-| Setting | Value |
-|---------|-------|
-| Indent | 4 spaces (all languages) |
-| Max width | 120 characters |
-| Line endings | LF |
-| Charset | UTF-8 |
-| Trailing commas | Always |
-| Collections | Always multi-line |
-| Linter | Always passing, zero tolerance |
 
 ## Language-Specific References
 
