@@ -553,8 +553,8 @@ COPY entrypoint.sh /opt/kodizm/entrypoint.sh
 COPY setup.sh /opt/kodizm/setup.sh
 COPY proxy/ /opt/kodizm/proxy/
 RUN chmod +x /opt/kodizm/entrypoint.sh /opt/kodizm/setup.sh && \
-    mkdir -p /workspace && \
-    chown agent:agent /workspace /opt/kodizm
+    mkdir -p /workspace /task-workspaces && \
+    chown agent:agent /workspace /task-workspaces /opt/kodizm
 
 WORKDIR /workspace
 

@@ -37,6 +37,10 @@ if [ "$(id -u)" = "0" ]; then
         chown -R agent:agent /workspace 2>/dev/null || true
     fi
 
+    # Ensure task-workspaces directory exists (pipeline workspace isolation)
+    mkdir -p /task-workspaces
+    chown agent:agent /task-workspaces
+
     # Re-exec as agent user
     exec gosu agent "$0" "$@"
 fi
