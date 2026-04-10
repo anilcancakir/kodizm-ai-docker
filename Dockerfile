@@ -543,6 +543,7 @@ COPY defaults/settings.json /home/agent/.claude/settings.json
 COPY defaults/skills/ /home/agent/.claude/skills/
 RUN su -l agent -c "CLAUDE_CODE_PLUGIN_SEED_DIR=/opt/kodizm/defaults/plugins ANTHROPIC_API_KEY=sk-ant-dummy DISABLE_AUTOUPDATER=1 claude -p 'init' 2>/dev/null || true" && \
     ls -la /home/agent/.claude.json && \
+    cp /opt/kodizm/defaults/settings.json /home/agent/.claude/settings.json && \
     chown -R agent:agent /home/agent/.claude/ && \
     echo '[Dockerfile] CC default config + skills + LSP plugins bootstrapped'
 
