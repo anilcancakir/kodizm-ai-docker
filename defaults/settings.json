@@ -51,6 +51,21 @@
             "WebSearch",
             "WebFetch",
             "Agent(Plan)",
+            "Agent(statusline-setup)",
+            "NotebookEdit",
+            "CronCreate",
+            "CronDelete",
+            "CronList",
+            "EnterWorktree",
+            "ExitWorktree",
+            "RemoteTrigger",
+            "Skill(schedule)",
+            "Skill(loop)",
+            "Skill(release)",
+            "Skill(claude-api)",
+            "Skill(update-config)",
+            "Skill(keybindings-help)",
+            "Skill(simplify)",
             "Bash(git push*)",
             "Bash(git commit*)",
             "Bash(git checkout*)",
@@ -87,6 +102,15 @@
                     {
                         "type": "command",
                         "command": "echo 'Agent(Plan) blocked — Kodizm manages planning via task lifecycle.' >&2; exit 2"
+                    }
+                ]
+            },
+            {
+                "matcher": "NotebookEdit|CronCreate|CronDelete|CronList|EnterWorktree|ExitWorktree|RemoteTrigger",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "echo 'Tool blocked — not available on Kodizm platform.' >&2; exit 2"
                     }
                 ]
             },
