@@ -541,10 +541,13 @@ RUN set -euo pipefail && \
 COPY --chown=agent:agent defaults/plugins/ /opt/kodizm/defaults/plugins/
 COPY --chown=agent:agent defaults/settings.json /opt/kodizm/defaults/settings.json
 COPY --chown=agent:agent defaults/skills/ /opt/kodizm/defaults/skills/
+COPY --chown=agent:agent defaults/hooks/ /opt/kodizm/defaults/hooks/
 ENV CLAUDE_CODE_PLUGIN_SEED_DIR=/opt/kodizm/defaults/plugins
 
 COPY defaults/settings.json /home/agent/.claude/settings.json
 COPY defaults/skills/ /home/agent/.claude/skills/
+COPY --chown=agent:agent defaults/hooks/ /home/agent/.claude/hooks/
+RUN chmod +x /home/agent/.claude/hooks/*.sh
 RUN su -l agent -c "CLAUDE_CODE_PLUGIN_SEED_DIR=/opt/kodizm/defaults/plugins ANTHROPIC_API_KEY=sk-ant-dummy DISABLE_AUTOUPDATER=1 claude -p 'init' 2>/dev/null || true" && \
     ls -la /home/agent/.claude.json && \
     cp /opt/kodizm/defaults/settings.json /home/agent/.claude/settings.json && \

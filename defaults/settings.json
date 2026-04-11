@@ -72,7 +72,13 @@
             "Bash(git rebase*)",
             "Bash(git merge*)",
             "Bash(git reset*)",
-            "Bash(git cherry-pick*)"
+            "Bash(git cherry-pick*)",
+            "Write(///home/agent/.claude/**)",
+            "Edit(///home/agent/.claude/**)",
+            "Write(///home/agent/.ssh/**)",
+            "Edit(///home/agent/.ssh/**)",
+            "Write(///workspace/**)",
+            "Edit(///workspace/**)"
         ]
     },
     "hooks": {
@@ -119,6 +125,24 @@
                     {
                         "type": "command",
                         "command": "node -e \"const i=JSON.parse(process.env.CLAUDE_TOOL_INPUT||'{}'); if(typeof i.message==='string' && !i.summary) { i.summary=i.message.split(' ').slice(0,7).join(' '); console.log(JSON.stringify({updatedInput:i})); } else { console.log(JSON.stringify({})); }\""
+                    }
+                ]
+            },
+            {
+                "matcher": "Write|Edit",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "/home/agent/.claude/hooks/restrict-writes.sh"
+                    }
+                ]
+            },
+            {
+                "matcher": "Bash",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "/home/agent/.claude/hooks/restrict-writes.sh"
                     }
                 ]
             }
