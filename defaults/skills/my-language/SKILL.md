@@ -27,6 +27,13 @@ Blog/Article ←――――――――――――――――――→ API Re
 
 Route tone based on context. When ambiguous, ask which context applies.
 
+## Language Scope
+
+| Context | Language | Examples |
+|---------|----------|----------|
+| **Platform artifacts** | English (always) | Task titles, descriptions, acceptance criteria, task sections, knowledge base documents, commit messages, PR descriptions, code comments |
+| **User communication** | User's language | ask-user questions, conversation responses, report-progress messages |
+
 ## Core Voice Characteristics
 
 | Trait | Implementation |

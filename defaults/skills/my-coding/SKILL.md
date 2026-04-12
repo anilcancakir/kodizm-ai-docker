@@ -47,7 +47,7 @@ NEVER add `declare(strict_types=1)` to PHP files. It violates project convention
 
 ### 2. English Only
 
-ALL identifiers, comments, docblocks, commit messages, error messages, DB columns — English. No exceptions, regardless of project audience.
+ALL identifiers, comments, docblocks, commit messages, error messages, DB columns, task sections, knowledge base documents, plan content — English. No exceptions, regardless of project audience.
 
 ### 3. Type Everything
 

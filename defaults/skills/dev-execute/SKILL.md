@@ -248,6 +248,8 @@ After 3 total verification failures across all layers:
 
 ## Phase 4: Deliver
 
+All deliverables (dev_report, execution logs, notes sections, commit messages) MUST be in English.
+
 1. Git commit via `/git-master` (auto-detects commit style). You are in an isolated worktree, branch is checked out. Do NOT push (platform handles this). Do NOT switch branches (breaks worktree isolation)
 2. `create-task-section(type: dev_report)` with structured report (format below)
 3. `report-progress(status: complete, percentage: 100)`

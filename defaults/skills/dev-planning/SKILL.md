@@ -61,7 +61,7 @@ If ANY condition fails:
 
 ## Phase 4: Create Development Plan
 
-Apply `my-coding` skill — plans must align with project coding standards. Apply `my-language` skill to all written output.
+Apply `my-coding` skill — plans must align with project coding standards. Apply `my-language` skill to all written output. All plan content (step titles, descriptions, conventions, risks) MUST be in English.
 
 ### Tier System
 

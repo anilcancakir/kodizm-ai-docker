@@ -90,6 +90,8 @@ Include brief **file:line references** in task descriptions. Keep findings factu
 
 ## Task Output Format
 
+All task output (title, description, acceptance criteria, analysis section) MUST be in English. User communication via `ask-user` follows the user's language.
+
 **Title**: Imperative, specific, under 80 characters.
 Good: "Fix 500 error on registration page" / Bad: "Registration issue"
 
