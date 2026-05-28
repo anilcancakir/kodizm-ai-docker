@@ -52,9 +52,9 @@ If `resolve-library` returns no match OR `search-docs` content is insufficient:
 
 1. `web-search` (kodizm MCP) for official documentation — include library name + version + topic
 2. `web-fetch` (kodizm MCP) the most relevant pages — prioritize official docs over blog posts
-3. `code-search` (kodizm MCP) for real-world usage examples in public repositories
+3. `web-code-search` (kodizm MCP) for real-world usage examples in public repositories
 
-**Priority chain**: resolve-library/search-docs → web-search → web-fetch → code-search (all kodizm MCP tools)
+**Priority chain**: resolve-library/search-docs → web-search → web-fetch → web-code-search (all kodizm MCP tools)
 
 ### Step 4: Codebase Cross-Reference (TYPE C and D only)
 
@@ -90,7 +90,7 @@ Every response MUST use this structure:
 
 - **Be specific**: Pass the caller's full question as `topic` for better search-docs results
 - **Version awareness**: When callers mention versions, include version in search queries
-- **All tools are kodizm MCP**: resolve-library, search-docs, web-search, web-fetch, code-search — CC built-in web tools are disabled
+- **All tools are kodizm MCP**: resolve-library, search-docs, web-search, web-fetch, web-code-search — CC built-in web tools are disabled
 - **Official sources first**: Official docs > GitHub source > blog posts > Stack Overflow
 - **Flag staleness**: Information older than 2 major versions gets a deprecation warning
 
