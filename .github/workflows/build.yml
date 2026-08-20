@@ -49,11 +49,33 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # OpenCode ships near daily and its download URL is pinned by tag in
+      # the Dockerfile, so the newest tag is resolved here and handed to
+      # the build as an arg. This keeps the version inside the layer cache
+      # key: the previous `releases/latest` URL lived inside a RUN, which
+      # Docker cannot see into, so the layer stayed cached and the binary
+      # silently froze at whatever version it was first built with.
+      - name: Resolve latest OpenCode release
+        id: opencode
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          version="$(gh api repos/anomalyco/opencode/releases/latest --jq '.tag_name' | sed 's/^v//')"
+          if [ -z "${version}" ] || [ "${version}" = "null" ]; then
+            echo "Could not resolve an OpenCode release tag." >&2
+            exit 1
+          fi
+          echo "Resolved OpenCode version: ${version}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
+          build-args: |
+            OPENCODE_VERSION=${{ steps.opencode.outputs.version }}
           tags: |
             ghcr.io/anilcancakir/kodizm-ai-docker:latest
             ghcr.io/anilcancakir/kodizm-ai-docker:sha-${{ github.sha }}

@@ -383,6 +383,22 @@ RUN set -euo pipefail && \
     rm -f /tmp/cc-stable-version
 
 # OpenCode — native Bun-compiled binary from GitHub Releases
+#
+# Pinned by tag rather than the `releases/latest` redirect. A `latest`
+# URL inside a RUN never enters the layer cache key, so the layer stayed
+# cached across builds and opencode silently froze at whatever version
+# the layer was first built with; it only refreshed by accident, when
+# the Claude cache-buster above happened to invalidate it. The CI
+# workflow resolves the newest tag and passes it as a build arg, so the
+# version is both current and recorded in the build log. The default
+# below is the floor for a bare local `docker build`.
+#
+# The upstream repo moved from `sst/opencode` to `anomalyco/opencode`
+# during the 2026 org rename; GitHub still redirects the old path, but
+# the canonical owner is spelled out here so the redirect is not load
+# bearing.
+ARG OPENCODE_VERSION=1.18.19
+
 RUN set -euo pipefail && \
     ARCH="$(dpkg --print-architecture)" && \
     case "${ARCH}" in \
@@ -390,7 +406,7 @@ RUN set -euo pipefail && \
         arm64) OC_ARCH="arm64" ;; \
         *) echo "Unsupported arch: ${ARCH}" && exit 1 ;; \
     esac && \
-    curl -fsSL "https://github.com/anomalyco/opencode/releases/latest/download/opencode-linux-${OC_ARCH}.tar.gz" \
+    curl -fsSL "https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/opencode-linux-${OC_ARCH}.tar.gz" \
     | tar -xz -C /usr/local/bin && \
     chmod +x /usr/local/bin/opencode
 
@@ -626,6 +642,40 @@ RUN source ${NVM_DIR}/nvm.sh && nvm use default && \
 RUN set -euo pipefail && \
     NODE_BIN="${NVM_DIR}/versions/node/v$(cat ${NVM_DIR}/alias/default)/bin" && \
     ln -sf "${NODE_BIN}/kodizm-acp" /usr/local/bin/kodizm-acp
+
+# ---------------------------------------------------------------------------
+# Stage 17b: CLI smoke gate
+# ---------------------------------------------------------------------------
+#
+# Fail the build when an agent-facing binary is missing or cannot report
+# its own version, and record the resolved versions in the build log.
+# Without this gate the only way to learn which claude / opencode a
+# published image carried was to pull it and run it, or to read the
+# layer timestamps out of the GHCR config blob; a silently frozen CLI
+# therefore survived every build. Runs as `agent` because that is the
+# user the control plane execs.
+#
+# claude and opencode are self-contained native binaries, so their
+# version output is asserted directly. codex and kodizm-acp are Node
+# entry points behind nvm, whose resolution depends on the env the
+# control plane injects at exec time, so only their presence is
+# asserted here rather than invoking them under a login shell.
+#
+# The versions are captured into variables rather than interpolated
+# straight into `echo`. Under `set -e` the exit status of a command
+# substitution inside an argument is discarded (`echo "$(false)"`
+# succeeds), so the inlined form printed an empty version and passed
+# the build; a plain assignment propagates the failure. The `:?`
+# expansions then catch a binary that exits 0 while printing nothing.
+RUN su -l agent -c 'set -euo pipefail; \
+      claude_version="$(claude --version)"; \
+      opencode_version="$(opencode --version)"; \
+      : "${claude_version:?claude --version produced no output}"; \
+      : "${opencode_version:?opencode --version produced no output}"; \
+      echo "kodizm-cli-versions: claude=${claude_version}"; \
+      echo "kodizm-cli-versions: opencode=${opencode_version}"; \
+      test -x /usr/local/bin/codex; \
+      test -x /usr/local/bin/kodizm-acp'
 
 # ---------------------------------------------------------------------------
 # Stage 18: Final image metadata
