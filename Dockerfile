@@ -614,7 +614,7 @@ RUN chmod +x /opt/kodizm/entrypoint.sh /opt/kodizm/setup.sh && \
 # install + symlink layers, taking <1 minute end-to-end (npm fetch +
 # image push) instead of the full 20+ minute language-tooling rebuild.
 
-ARG KODIZM_ACP_VERSION=0.6.1
+ARG KODIZM_ACP_VERSION=0.6.2
 
 RUN source ${NVM_DIR}/nvm.sh && nvm use default && \
     npm install -g "@kodizm/acp@${KODIZM_ACP_VERSION}"
