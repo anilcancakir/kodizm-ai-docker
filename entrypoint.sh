@@ -103,22 +103,15 @@ with open('/home/agent/.claude/settings.json', 'w') as f:
     fi
 fi
 
-# Sync image-baked opencode + codex defaults into their volume-mounted
-# config directories. Mirrors the .claude block above: Docker volumes
-# at /home/agent/.config/opencode and /home/agent/.codex shadow the
-# image-baked layout, so the seed configs must be copied across on
-# every boot when the volume is freshly created.
+# Sync the image-baked opencode defaults into its volume-mounted config
+# directory. Mirrors the .claude block above: the Docker volume at
+# /home/agent/.config/opencode shadows the image-baked layout, so the
+# seed config must be copied across on every boot when the volume is
+# freshly created.
 if [ -d /opt/kodizm/defaults/opencode ]; then
     mkdir -p /home/agent/.config/opencode
     if [ ! -f /home/agent/.config/opencode/opencode.json ]; then
         cp /opt/kodizm/defaults/opencode/opencode.json /home/agent/.config/opencode/opencode.json 2>/dev/null || true
-    fi
-fi
-
-if [ -d /opt/kodizm/defaults/codex ]; then
-    mkdir -p /home/agent/.codex
-    if [ ! -f /home/agent/.codex/config.toml ]; then
-        cp /opt/kodizm/defaults/codex/config.toml /home/agent/.codex/config.toml 2>/dev/null || true
     fi
 fi
 

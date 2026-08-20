@@ -570,7 +570,6 @@ COPY --chown=agent:agent defaults/skills/ /opt/kodizm/defaults/skills/
 COPY --chown=agent:agent defaults/agents/ /opt/kodizm/defaults/agents/
 COPY --chown=agent:agent defaults/hooks/ /opt/kodizm/defaults/hooks/
 COPY --chown=agent:agent defaults/opencode/ /opt/kodizm/defaults/opencode/
-COPY --chown=agent:agent defaults/codex/ /opt/kodizm/defaults/codex/
 ENV CLAUDE_CODE_PLUGIN_SEED_DIR=/opt/kodizm/defaults/plugins
 
 COPY defaults/settings.json /home/agent/.claude/settings.json
@@ -595,34 +594,15 @@ RUN chmod +x /opt/kodizm/entrypoint.sh /opt/kodizm/setup.sh && \
     chown agent:agent /workspace /task-workspaces /opt/kodizm
 
 # ---------------------------------------------------------------------------
-# Stage 16: codex CLI (deliberately late + isolated)
-# ---------------------------------------------------------------------------
-#
-# codex bumps invalidate only the next layer (its symlink) plus any
-# layer below; everything above stays cached. Split off from the
-# kodizm-acp install so a codex bump does not invalidate kodizm-acp's
-# install layer (and vice versa). Keep this BEFORE the kodizm-acp
-# stage because codex changes less frequently than kodizm-acp.
-
-ARG CODEX_VERSION=0.128.0
-
-RUN source ${NVM_DIR}/nvm.sh && nvm use default && \
-    npm install -g "@openai/codex@${CODEX_VERSION}"
-
-RUN set -euo pipefail && \
-    NODE_BIN="${NVM_DIR}/versions/node/v$(cat ${NVM_DIR}/alias/default)/bin" && \
-    ln -sf "${NODE_BIN}/codex" /usr/local/bin/codex
-
-# ---------------------------------------------------------------------------
 # Stage 17: kodizm-acp (deliberately last, most volatile)
 # ---------------------------------------------------------------------------
 #
-# Phase 4 cutover: the legacy three-adapter layer (claude-agent-acp
-# + codex-acp + opencode acp shim) collapsed into a single bridge,
-# `@kodizm/acp`. The Kodizm control plane spawns this one bin per
-# session with `KODIZM_BACKEND=claude|codex|opencode` env; the bridge
-# dispatches internally to each backend's native interface (Claude
-# SDK, codex app-server stdio, opencode HTTP server).
+# The legacy per-CLI adapter layer (claude-agent-acp + opencode acp
+# shim) collapsed into a single bridge, `@kodizm/acp`. The Kodizm
+# control plane spawns this one bin per session with
+# `KODIZM_BACKEND=claude|opencode` env; the bridge dispatches
+# internally to each backend's native interface (Claude SDK, opencode
+# HTTP server).
 #
 # Installed globally so the control plane can spawn it via
 # `docker exec -i <container> kodizm-acp` without npx round-trips.
@@ -634,7 +614,7 @@ RUN set -euo pipefail && \
 # install + symlink layers, taking <1 minute end-to-end (npm fetch +
 # image push) instead of the full 20+ minute language-tooling rebuild.
 
-ARG KODIZM_ACP_VERSION=0.5.7
+ARG KODIZM_ACP_VERSION=0.6.0
 
 RUN source ${NVM_DIR}/nvm.sh && nvm use default && \
     npm install -g "@kodizm/acp@${KODIZM_ACP_VERSION}"
@@ -656,10 +636,10 @@ RUN set -euo pipefail && \
 # user the control plane execs.
 #
 # claude and opencode are self-contained native binaries, so their
-# version output is asserted directly. codex and kodizm-acp are Node
-# entry points behind nvm, whose resolution depends on the env the
-# control plane injects at exec time, so only their presence is
-# asserted here rather than invoking them under a login shell.
+# version output is asserted directly. kodizm-acp is a Node entry point
+# behind nvm, whose resolution depends on the env the control plane
+# injects at exec time, so only its presence is asserted here rather
+# than invoking it under a login shell.
 #
 # The versions are captured into variables rather than interpolated
 # straight into `echo`. Under `set -e` the exit status of a command
@@ -674,7 +654,6 @@ RUN su -l agent -c 'set -euo pipefail; \
       : "${opencode_version:?opencode --version produced no output}"; \
       echo "kodizm-cli-versions: claude=${claude_version}"; \
       echo "kodizm-cli-versions: opencode=${opencode_version}"; \
-      test -x /usr/local/bin/codex; \
       test -x /usr/local/bin/kodizm-acp'
 
 # ---------------------------------------------------------------------------
