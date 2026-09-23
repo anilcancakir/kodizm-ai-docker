@@ -372,15 +372,22 @@ RUN set -euo pipefail && \
 
 # Claude Code — native standalone binary (npm deprecated since Feb 2026)
 # Install as root, then copy to /usr/local/bin so agent user can execute it
-# ADD fetches the release version file on every build, busting the cache layer
-# when Anthropic publishes a new release (other layers stay cached).
+#
+# Pinned to an exact version and bumped by hand in the same commit as
+# KODIZM_ACP_VERSION. @kodizm/acp drives this binary through
+# claude-agent-sdk, and SDK 0.3.N ships as the pair of CLI 2.1.N (its
+# package.json `claudeCodeVersion`). Nothing enforces that pairing at
+# runtime, and the CLI changes behaviour without a breaking-change tag:
+# 2.1.277 made a resumed turn's cost cumulative. A floating channel let
+# the weekly cron ship a CLI no smoke had run against into every
+# container through auto_rolling_restart; `stable` meanwhile sat on
+# 2.1.267 under an SDK built for 2.1.280.
 ENV DISABLE_AUTOUPDATER=1
-ADD https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/stable /tmp/cc-stable-version
+ARG CLAUDE_CODE_VERSION=2.1.280
 RUN set -euo pipefail && \
-    curl -fsSL https://claude.ai/install.sh | bash -s stable && \
+    curl -fsSL https://claude.ai/install.sh | bash -s "${CLAUDE_CODE_VERSION}" && \
     cp /root/.local/bin/claude /usr/local/bin/claude && \
-    chmod 755 /usr/local/bin/claude && \
-    rm -f /tmp/cc-stable-version
+    chmod 755 /usr/local/bin/claude
 
 # OpenCode — native Bun-compiled binary from GitHub Releases
 #
@@ -614,7 +621,7 @@ RUN chmod +x /opt/kodizm/entrypoint.sh /opt/kodizm/setup.sh && \
 # install + symlink layers, taking <1 minute end-to-end (npm fetch +
 # image push) instead of the full 20+ minute language-tooling rebuild.
 
-ARG KODIZM_ACP_VERSION=0.6.5
+ARG KODIZM_ACP_VERSION=0.6.6
 
 RUN source ${NVM_DIR}/nvm.sh && nvm use default && \
     npm install -g "@kodizm/acp@${KODIZM_ACP_VERSION}"
@@ -647,11 +654,19 @@ RUN set -euo pipefail && \
 # succeeds), so the inlined form printed an empty version and passed
 # the build; a plain assignment propagates the failure. The `:?`
 # expansions then catch a binary that exits 0 while printing nothing.
+#
+# claude is also held to the pinned CLAUDE_CODE_VERSION: a non-empty
+# answer from the wrong binary passed this gate before. The ARG is
+# spliced in by the outer shell because `su -l` starts from a clean env.
 RUN su -l agent -c 'set -euo pipefail; \
       claude_version="$(claude --version)"; \
       opencode_version="$(opencode --version)"; \
       : "${claude_version:?claude --version produced no output}"; \
       : "${opencode_version:?opencode --version produced no output}"; \
+      case "${claude_version}" in \
+        "'"${CLAUDE_CODE_VERSION}"' "*) ;; \
+        *) echo "expected claude '"${CLAUDE_CODE_VERSION}"', got ${claude_version}" >&2; exit 1 ;; \
+      esac; \
       echo "kodizm-cli-versions: claude=${claude_version}"; \
       echo "kodizm-cli-versions: opencode=${opencode_version}"; \
       test -x /usr/local/bin/kodizm-acp'
