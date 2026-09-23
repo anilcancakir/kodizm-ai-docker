@@ -367,58 +367,6 @@ RUN set -euo pipefail && \
     rm -rf /tmp/*
 
 # ---------------------------------------------------------------------------
-# Stage 12: CLI Tools — Claude Code + OpenCode (native binaries, no npm)
-# ---------------------------------------------------------------------------
-
-# Claude Code — native standalone binary (npm deprecated since Feb 2026)
-# Install as root, then copy to /usr/local/bin so agent user can execute it
-#
-# Pinned to an exact version and bumped by hand in the same commit as
-# KODIZM_ACP_VERSION. @kodizm/acp drives this binary through
-# claude-agent-sdk, and SDK 0.3.N ships as the pair of CLI 2.1.N (its
-# package.json `claudeCodeVersion`). Nothing enforces that pairing at
-# runtime, and the CLI changes behaviour without a breaking-change tag:
-# 2.1.277 made a resumed turn's cost cumulative. A floating channel let
-# the weekly cron ship a CLI no smoke had run against into every
-# container through auto_rolling_restart; `stable` meanwhile sat on
-# 2.1.267 under an SDK built for 2.1.280.
-ENV DISABLE_AUTOUPDATER=1
-ARG CLAUDE_CODE_VERSION=2.1.280
-RUN set -euo pipefail && \
-    curl -fsSL https://claude.ai/install.sh | bash -s "${CLAUDE_CODE_VERSION}" && \
-    cp /root/.local/bin/claude /usr/local/bin/claude && \
-    chmod 755 /usr/local/bin/claude
-
-# OpenCode — native Bun-compiled binary from GitHub Releases
-#
-# Pinned by tag rather than the `releases/latest` redirect. A `latest`
-# URL inside a RUN never enters the layer cache key, so the layer stayed
-# cached across builds and opencode silently froze at whatever version
-# the layer was first built with; it only refreshed by accident, when
-# a Claude release cache-buster (since replaced by the pin above)
-# happened to invalidate it. The CI
-# workflow resolves the newest tag and passes it as a build arg, so the
-# version is both current and recorded in the build log. The default
-# below is the floor for a bare local `docker build`.
-#
-# The upstream repo moved from `sst/opencode` to `anomalyco/opencode`
-# during the 2026 org rename; GitHub still redirects the old path, but
-# the canonical owner is spelled out here so the redirect is not load
-# bearing.
-ARG OPENCODE_VERSION=1.18.19
-
-RUN set -euo pipefail && \
-    ARCH="$(dpkg --print-architecture)" && \
-    case "${ARCH}" in \
-        amd64) OC_ARCH="x64" ;; \
-        arm64) OC_ARCH="arm64" ;; \
-        *) echo "Unsupported arch: ${ARCH}" && exit 1 ;; \
-    esac && \
-    curl -fsSL "https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/opencode-linux-${OC_ARCH}.tar.gz" \
-    | tar -xz -C /usr/local/bin && \
-    chmod +x /usr/local/bin/opencode
-
-# ---------------------------------------------------------------------------
 # Stage 12b: Developer Tooling (LSP servers, linters, formatters, build tools)
 # ---------------------------------------------------------------------------
 
@@ -558,6 +506,66 @@ RUN set -euo pipefail && \
     chown agent:agent /home/agent/.bashrc /home/agent/.profile_kodizm && \
     # Flutter git safe.directory for agent user
     su -c "git config --global --add safe.directory /opt/flutter" agent
+
+# ---------------------------------------------------------------------------
+# Stage 14 CLI: Claude Code + OpenCode (native binaries, no npm)
+# ---------------------------------------------------------------------------
+#
+# Placed after Stage 14 on purpose. Both versions move often (the CLI by
+# hand, opencode on every weekly build), and a changed ARG misses the
+# cache for every RUN after it. Stage 14's `chown -R` over the runtimes
+# copies about 4.3 GB into a fresh layer, so with this block ahead of it
+# a CLI bump shipped that 4.3 GB again and made a 5.5 GB pull out of a
+# few hundred MB of binaries. Nothing between Stage 12b and Stage 14
+# needs either CLI; Stage 14a, which runs `claude` once, is the first.
+
+# Claude Code: native standalone binary (npm deprecated since Feb 2026)
+# Install as root, then copy to /usr/local/bin so agent user can execute it
+#
+# Pinned to an exact version and bumped by hand in the same commit as
+# KODIZM_ACP_VERSION. @kodizm/acp drives this binary through
+# claude-agent-sdk, and SDK 0.3.N ships as the pair of CLI 2.1.N (its
+# package.json `claudeCodeVersion`). Nothing enforces that pairing at
+# runtime, and the CLI changes behaviour without a breaking-change tag:
+# 2.1.277 made a resumed turn's cost cumulative. A floating channel let
+# the weekly cron ship a CLI no smoke had run against into every
+# container through auto_rolling_restart; `stable` meanwhile sat on
+# 2.1.267 under an SDK built for 2.1.280.
+ENV DISABLE_AUTOUPDATER=1
+ARG CLAUDE_CODE_VERSION=2.1.280
+RUN set -euo pipefail && \
+    curl -fsSL https://claude.ai/install.sh | bash -s "${CLAUDE_CODE_VERSION}" && \
+    cp /root/.local/bin/claude /usr/local/bin/claude && \
+    chmod 755 /usr/local/bin/claude
+
+# OpenCode: native Bun-compiled binary from GitHub Releases
+#
+# Pinned by tag rather than the `releases/latest` redirect. A `latest`
+# URL inside a RUN never enters the layer cache key, so the layer stayed
+# cached across builds and opencode silently froze at whatever version
+# the layer was first built with; it only refreshed by accident, when
+# a Claude release cache-buster (since replaced by the pin above)
+# happened to invalidate it. The CI
+# workflow resolves the newest tag and passes it as a build arg, so the
+# version is both current and recorded in the build log. The default
+# below is the floor for a bare local `docker build`.
+#
+# The upstream repo moved from `sst/opencode` to `anomalyco/opencode`
+# during the 2026 org rename; GitHub still redirects the old path, but
+# the canonical owner is spelled out here so the redirect is not load
+# bearing.
+ARG OPENCODE_VERSION=1.18.19
+
+RUN set -euo pipefail && \
+    ARCH="$(dpkg --print-architecture)" && \
+    case "${ARCH}" in \
+        amd64) OC_ARCH="x64" ;; \
+        arm64) OC_ARCH="arm64" ;; \
+        *) echo "Unsupported arch: ${ARCH}" && exit 1 ;; \
+    esac && \
+    curl -fsSL "https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/opencode-linux-${OC_ARCH}.tar.gz" \
+    | tar -xz -C /usr/local/bin && \
+    chmod +x /usr/local/bin/opencode
 
 # ---------------------------------------------------------------------------
 # Stage 14a: Claude Code default config bootstrap
