@@ -395,7 +395,8 @@ RUN set -euo pipefail && \
 # URL inside a RUN never enters the layer cache key, so the layer stayed
 # cached across builds and opencode silently froze at whatever version
 # the layer was first built with; it only refreshed by accident, when
-# the Claude cache-buster above happened to invalidate it. The CI
+# a Claude release cache-buster (since replaced by the pin above)
+# happened to invalidate it. The CI
 # workflow resolves the newest tag and passes it as a build arg, so the
 # version is both current and recorded in the build log. The default
 # below is the floor for a bare local `docker build`.
@@ -621,7 +622,7 @@ RUN chmod +x /opt/kodizm/entrypoint.sh /opt/kodizm/setup.sh && \
 # install + symlink layers, taking <1 minute end-to-end (npm fetch +
 # image push) instead of the full 20+ minute language-tooling rebuild.
 
-ARG KODIZM_ACP_VERSION=0.6.6
+ARG KODIZM_ACP_VERSION=0.6.7
 
 RUN source ${NVM_DIR}/nvm.sh && nvm use default && \
     npm install -g "@kodizm/acp@${KODIZM_ACP_VERSION}"
