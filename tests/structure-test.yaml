@@ -154,4 +154,4 @@ fileContentTests:
     expectedContents: ["\"php\"\\s*:\\s*\"\\d+\\."]
   - name: "versions.json records node"
     path: "/opt/kodizm/versions.json"
-    expectedContents: ["\"node\"\\s*:\\s*\"\\d+\\."]
+    expectedContents: ["\"node\"\\s*:\\s*\"\\d+\""]
