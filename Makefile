@@ -5,7 +5,7 @@ SCRIPTS := $(CURDIR)/scripts
 FIXTURES := $(CURDIR)/tests/fixtures
 
 docker-lint:
-	docker run --rm -i hadolint/hadolint < Dockerfile
+	docker run --rm -i -v $(CURDIR)/.hadolint.yaml:/.config/hadolint.yaml:ro hadolint/hadolint < Dockerfile
 
 docker-build:
 	docker build -t $(IMAGE_TAG) .
