@@ -1,9 +1,8 @@
 ignored:
-  # We intentionally use || true for graceful extension install fallback
-  - DL3059  # Multiple consecutive RUN instructions (our stages are intentional)
-  - SC2086  # Double quote to prevent globbing — we want word splitting in extension loops
-  - SC1091  # Not following sourced file — profile files exist at runtime
-  - DL3013  # Pin pip versions — we want latest tools at build time
+  # Debian, sury and PGDG ship security fixes as new package revisions and sury keeps only the
+  # newest one, so a pinned apt version breaks the build within weeks. The base image is pinned by
+  # digest and every tool that matters by an ARG with a Renovate comment.
+  - DL3008
 
 trustedRegistries:
   - docker.io

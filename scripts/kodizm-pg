@@ -1,0 +1,170 @@
+#!/usr/bin/env bash
+# In-container PostgreSQL 17 for the agent user: kodizm-pg start|stop|status
+#
+# The server dies with the container, so Laravel runs `kodizm-pg start` as agent on every boot
+# of a persistent project container. Every command is idempotent. The first start initialises
+# the cluster with trust auth (socket and loopback only) and creates the role and database
+# `agent`, which the image's PGHOST, PGUSER and PGDATABASE point psql at.
+set -euo pipefail
+
+PG_BIN=/usr/lib/postgresql/17/bin
+PG_ROOT="${HOME}/.local/share/kodizm-pg"
+PG_DATA="${PG_ROOT}/data"
+PG_SOCKET_DIR="${PG_ROOT}/run"
+PG_LOG="${PG_ROOT}/postgres.log"
+PG_PORT=5432
+START_TIMEOUT_SECONDS=30
+LOCK_TIMEOUT_SECONDS=60
+
+fail() {
+  echo "kodizm-pg: $*" >&2
+  exit 1
+}
+
+usage() {
+  echo 'usage: kodizm-pg start|stop|status' >&2
+  exit 2
+}
+
+is_ready() {
+  "${PG_BIN}/pg_isready" -q -h "${PG_SOCKET_DIR}" -p "${PG_PORT}" -U agent -d postgres
+}
+
+# The pid file outlives a container restart, and the new PID namespace hands its PIDs to other
+# processes, so a pid is only trusted when it names a live postgres.
+postmaster_alive() {
+  local pid_file="${PG_DATA}/postmaster.pid" pid
+
+  [[ -f "${pid_file}" ]] || return 1
+  pid="$(head -n 1 "${pid_file}")"
+  [[ -n "${pid}" && -r "/proc/${pid}/comm" ]] || return 1
+  [[ "$(<"/proc/${pid}/comm")" == postgres ]]
+}
+
+initialise() {
+  local staging="${PG_ROOT}/data.init"
+
+  # 1. A cluster with PG_VERSION is complete: initdb runs in a staging directory and is moved into
+  #    place only on success, so an interrupted first start cannot leave a half-built cluster.
+  [[ -f "${PG_DATA}/PG_VERSION" ]] && return 0
+  rm -rf "${staging}"
+
+  # 2. Trust is safe here: the socket sits in the agent's own directory and TCP binds loopback.
+  "${PG_BIN}/initdb" \
+    --pgdata="${staging}" \
+    --username=agent \
+    --auth=trust \
+    --encoding=UTF8 \
+    --locale=C.UTF-8 \
+    >"${PG_ROOT}/initdb.log" 2>&1 \
+    || fail "initdb failed, see ${PG_ROOT}/initdb.log"
+
+  # 3. The default socket directory belongs to the postgres system user, so the server uses its own.
+  cat >>"${staging}/postgresql.conf" <<EOF
+listen_addresses = 'localhost'
+port = ${PG_PORT}
+unix_socket_directories = '${PG_SOCKET_DIR}'
+EOF
+  mv "${staging}" "${PG_DATA}"
+}
+
+wait_until_ready() {
+  local attempt
+
+  for ((attempt = 0; attempt < START_TIMEOUT_SECONDS; attempt++)); do
+    is_ready && return 0
+    sleep 1
+  done
+
+  return 1
+}
+
+ensure_database() {
+  local exists
+
+  # The bootstrap superuser is always agent, whatever PGUSER the caller carries.
+  exists="$("${PG_BIN}/psql" -h "${PG_SOCKET_DIR}" -p "${PG_PORT}" -U agent -d postgres -tAc \
+    "select 1 from pg_database where datname = 'agent'")" \
+    || fail 'could not query the server for the agent database'
+  [[ "${exists}" == 1 ]] && return 0
+  "${PG_BIN}/createdb" -h "${PG_SOCKET_DIR}" -p "${PG_PORT}" -U agent agent \
+    || fail 'could not create the agent database'
+}
+
+start() {
+  # 1. Concurrent boots must not race initdb or a second postmaster.
+  exec 9>"${PG_ROOT}/.lock"
+  flock -w "${LOCK_TIMEOUT_SECONDS}" 9 || fail "another kodizm-pg holds ${PG_ROOT}/.lock"
+
+  # 2. Already serving is success, so a repeated boot is a no-op.
+  if is_ready; then
+    ensure_database
+    echo 'kodizm-pg: already running'
+
+    return 0
+  fi
+
+  initialise
+
+  # 3. A live postmaster that is not ready yet is still starting; anything else is a dead
+  #    container's leftover pid and socket lock files, which would block pg_ctl.
+  if postmaster_alive; then
+    wait_until_ready || fail "server did not accept connections within ${START_TIMEOUT_SECONDS}s, see ${PG_LOG}"
+  else
+    rm -f \
+      "${PG_DATA}/postmaster.pid" \
+      "${PG_SOCKET_DIR}/.s.PGSQL.${PG_PORT}" \
+      "${PG_SOCKET_DIR}/.s.PGSQL.${PG_PORT}.lock"
+    "${PG_BIN}/pg_ctl" start \
+      --pgdata="${PG_DATA}" \
+      --log="${PG_LOG}" \
+      --wait \
+      --timeout="${START_TIMEOUT_SECONDS}" \
+      >/dev/null \
+      || fail "server did not start within ${START_TIMEOUT_SECONDS}s, see ${PG_LOG}"
+    wait_until_ready || fail "server started but does not accept connections, see ${PG_LOG}"
+  fi
+
+  ensure_database
+  echo 'kodizm-pg: running'
+}
+
+stop() {
+  if ! postmaster_alive; then
+    echo 'kodizm-pg: not running'
+
+    return 0
+  fi
+
+  "${PG_BIN}/pg_ctl" stop \
+    --pgdata="${PG_DATA}" \
+    --mode=fast \
+    --wait \
+    --timeout="${START_TIMEOUT_SECONDS}" \
+    >/dev/null \
+    || fail "server did not stop within ${START_TIMEOUT_SECONDS}s, see ${PG_LOG}"
+  echo 'kodizm-pg: stopped'
+}
+
+status() {
+  if is_ready; then
+    echo 'kodizm-pg: running'
+
+    return 0
+  fi
+
+  echo 'kodizm-pg: not running'
+
+  return 3
+}
+
+[[ $# -eq 1 ]] || usage
+[[ "${EUID}" -ne 0 ]] || fail 'run as the agent user, postgres refuses to run as root'
+mkdir -p "${PG_SOCKET_DIR}"
+
+case "$1" in
+  start) start ;;
+  stop) stop ;;
+  status) status ;;
+  *) usage ;;
+esac

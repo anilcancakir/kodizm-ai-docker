@@ -1,692 +1,308 @@
-# =============================================================================
-# kodizm/agent-universal — Single universal agent image for all Kodizm tasks
-# Inspired by OpenAI codex-universal. Supports 9 language runtimes + CLI tools.
+# syntax=docker/dockerfile:1.28.0@sha256:bb22d9815c728170f72750f4e5b0d672e06176142e1d602c7e66c050100b7e5b
+
+# Kodizm agent image: one Debian 13 image for every project container.
 #
-# Build:  docker build -t kodizm/agent-universal:latest -f docker/Dockerfile docker/
-# =============================================================================
+# Laravel starts it with entrypoint ["tini", "--"] and cmd ["sleep", "infinity"] and drives it
+# over `docker exec --user agent`, so nothing here starts a service. Named volumes mount
+# /workspace, /home/agent/.claude, /home/agent/.config/opencode and /var/log/kodizm-debug, and
+# Docker copies image content only into an EMPTY volume: anything baked under those paths would
+# go stale in a warm volume, so they exist here as empty agent-owned directories only.
+#
+# Tools the agent may update or extend at runtime (node, bun, go, flutter, LSP servers, opencode,
+# the bridge) are installed by the agent user itself, so they are agent-owned from the layer that
+# creates them. A recursive chown over /opt once doubled the image (a 5.59 GB layer).
+#
+# Every version below is exact and bumped by Renovate through its `# renovate:` comment.
 
-FROM ubuntu:24.04 AS base
+# renovate: datasource=docker depName=debian
+FROM debian:13-slim@sha256:f6b08b09a05725f9431502d3b5714f5c4576e82c1a84fa1debe0c24a7e0c3ec4 AS toolchain
 
-LABEL maintainer="kodizm" \
-      description="Universal agent image — 9 languages, Claude Code CLI, OpenCode CLI"
+# Declared before SHELL: hadolint lints every RUN after a later ARG or ENV as POSIX sh.
+ARG DEBIAN_FRONTEND=noninteractive
+ENV LANG=C.UTF-8
 
-SHELL ["/bin/bash", "-c"]
-
-# ---------------------------------------------------------------------------
-# ARGs — pin every version so builds are reproducible and overridable
-# ---------------------------------------------------------------------------
-
-# Python (pyenv)
-ARG PYTHON_313=3.13.3
-ARG PYTHON_312=3.12.10
-ARG PYTHON_311=3.11.12
-ARG PYTHON_310=3.10.17
-ARG PYTHON_DEFAULT=3.13.3
-
-# Node.js (nvm)
-ARG NODE_22=22.16.0
-ARG NODE_20=20.19.1
-ARG NODE_18=18.20.8
-ARG NODE_DEFAULT=22.16.0
-ARG NVM_VERSION=0.40.3
-
-# Bun
-ARG BUN_VERSION=latest
-
-# Rust (rustup)
-ARG RUST_187=1.87.0
-ARG RUST_186=1.86.0
-ARG RUST_185=1.85.1
-ARG RUST_DEFAULT=1.87.0
-
-# Go (mise)
-ARG GO_124=1.24.3
-ARG GO_123=1.23.8
-ARG GO_122=1.22.12
-ARG GO_DEFAULT=1.24.3
-
-# Ruby (mise)
-ARG RUBY_34=3.4.4
-ARG RUBY_33=3.3.8
-ARG RUBY_DEFAULT=3.4.4
-
-# PHP (ondrej/php PPA)
-ARG PHP_DEFAULT=8.4
-
-# Java (mise)
-ARG JAVA_24=24
-ARG JAVA_21=21
-ARG JAVA_17=17
-ARG JAVA_DEFAULT=24
-
-# Flutter
-ARG FLUTTER_CHANNEL=stable
-
-# mise
-ARG MISE_VERSION=latest
+SHELL ["/bin/bash", "-o", "pipefail", "-e", "-u", "-c"]
 
 # ---------------------------------------------------------------------------
-# ENV — foundational paths set once, extended per runtime below
+# Root: the agent user, then system packages
 # ---------------------------------------------------------------------------
-ENV DEBIAN_FRONTEND=noninteractive \
-    LANG=en_US.UTF-8 \
-    LC_ALL=en_US.UTF-8 \
-    TZ=UTC
 
-# ---------------------------------------------------------------------------
-# Stage 1: System dependencies
-# ---------------------------------------------------------------------------
+# The volume mountpoints are created here so the first copy-up gives the volume agent ownership.
+RUN groupadd --gid 1001 agent \
+ && useradd --uid 1001 --gid 1001 --create-home --shell /bin/bash agent \
+ && install -d -o agent -g agent -m 0755 \
+      /opt/node \
+      /opt/bun \
+      /opt/go \
+      /opt/flutter \
+      /opt/kodizm \
+      /opt/kodizm/plugins \
+      /workspace \
+      /var/log/kodizm-debug \
+      /home/agent/.claude \
+      /home/agent/.config \
+      /home/agent/.config/opencode
+
+# Downloaded packages stay in the cache mount instead of the image; docker-clean would delete them.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    set -euo pipefail && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends \
-        locales \
-        git \
-        curl \
-        ca-certificates \
-        build-essential \
-        ripgrep \
-        jq \
-        unzip \
-        xz-utils \
-        wget \
-        openssh-client \
-        pkg-config \
-        sqlite3 \
-        libssl-dev \
-        zlib1g-dev \
-        libreadline-dev \
-        libffi-dev \
-        libbz2-dev \
-        liblzma-dev \
-        libncurses-dev \
-        libsqlite3-dev \
-        libxml2-dev \
-        libcurl4-openssl-dev \
-        libpq-dev \
-        make \
-        software-properties-common \
-        gosu \
-        tini \
-        lsb-release \
-        # Ruby deps
-        libyaml-dev \
-        # PHP deps
-        autoconf \
-        bison \
-        re2c \
-        libgd-dev \
-        libedit-dev \
-        libicu-dev \
-        libjpeg-dev \
-        libonig-dev \
-        libpng-dev \
-        libzip-dev \
-        libtidy-dev \
-        libxslt1-dev \
-    && \
-    locale-gen en_US.UTF-8 && \
-    rm -rf /tmp/*
+    rm -f /etc/apt/apt.conf.d/docker-clean \
+ && echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends \
+      ca-certificates \
+      curl \
+      git \
+      jq \
+      openssh-client \
+      procps \
+      python3 \
+      python3-venv \
+      ripgrep \
+      tini \
+      unzip \
+      xz-utils
+
+# PHP 8.3 and 8.5 from sury; Laravel resolves /usr/bin/php8.3 and /usr/bin/php8.5, bare php is 8.5.
+# ctype, fileinfo and tokenizer ship in phpX.Y-common, pcntl and openssl in phpX.Y-cli.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    curl -fsSLo /tmp/debsuryorg-archive-keyring.deb https://packages.sury.org/debsuryorg-archive-keyring.deb \
+ && dpkg -i /tmp/debsuryorg-archive-keyring.deb \
+ && rm /tmp/debsuryorg-archive-keyring.deb \
+ && echo 'deb [signed-by=/usr/share/keyrings/deb.sury.org-php.gpg] https://packages.sury.org/php/ trixie main' \
+      > /etc/apt/sources.list.d/sury-php.list \
+ && apt-get update \
+ && packages=() \
+ && for version in 8.3 8.5; do \
+      for extension in cli bcmath curl gd imagick intl ldap mbstring mongodb mysql pgsql redis soap sqlite3 \
+          swoole xml zip; do \
+        packages+=("php${version}-${extension}"); \
+      done; \
+    done \
+ && apt-get install -y --no-install-recommends "${packages[@]}" \
+ && update-alternatives --set php /usr/bin/php8.5
+
+# PostgreSQL 17 and pgvector from PGDG. The package's default cluster is suppressed: the agent
+# runs its own through kodizm-pg, never at image boot.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    keyring=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+ && install -d "${keyring%/*}" \
+ && curl -fsSLo "${keyring}" https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+ && echo "deb [signed-by=${keyring}] https://apt.postgresql.org/pub/repos/apt trixie-pgdg main" \
+      > /etc/apt/sources.list.d/pgdg.list \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends postgresql-common \
+ && sed -ri 's/#(create_main_cluster) .*$/\1 = false/' /etc/postgresql-common/createcluster.conf \
+ && apt-get install -y --no-install-recommends postgresql-17 postgresql-17-pgvector
+
+# renovate: datasource=github-releases depName=composer/composer
+ARG COMPOSER_VERSION=2.11.1
+RUN base="https://getcomposer.org/download/${COMPOSER_VERSION}" \
+ && curl -fsSLo /tmp/composer.phar "${base}/composer.phar" \
+ && expected="$(curl -fsSL "${base}/composer.phar.sha256sum")" \
+ && echo "${expected%% *}  /tmp/composer.phar" | sha256sum -c - \
+ && install -m 0755 /tmp/composer.phar /usr/local/bin/composer \
+ && rm /tmp/composer.phar
+
+# renovate: datasource=github-releases depName=astral-sh/uv
+ARG UV_VERSION=0.13.7
+RUN tarball=uv-x86_64-unknown-linux-gnu.tar.gz \
+ && base="https://github.com/astral-sh/uv/releases/download/${UV_VERSION}" \
+ && curl -fsSLo "/tmp/${tarball}" "${base}/${tarball}" \
+ && expected="$(curl -fsSL "${base}/${tarball}.sha256")" \
+ && echo "${expected%% *}  /tmp/${tarball}" | sha256sum -c - \
+ && tar -xzf "/tmp/${tarball}" --strip-components=1 -C /usr/local/bin \
+      uv-x86_64-unknown-linux-gnu/uv \
+      uv-x86_64-unknown-linux-gnu/uvx \
+ && rm "/tmp/${tarball}"
 
 # ---------------------------------------------------------------------------
-# Stage 1b: Repository setup — ondrej/php PPA + PostgreSQL PGDG + TimescaleDB
-# ---------------------------------------------------------------------------
-RUN set -euo pipefail && \
-    add-apt-repository -y ppa:ondrej/php && \
-    install -d /usr/share/postgresql-common/pgdg && \
-    curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
-      -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc && \
-    echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] \
-      https://apt.postgresql.org/pub/repos/apt noble-pgdg main" \
-      > /etc/apt/sources.list.d/pgdg.list && \
-    curl -fsSL https://packagecloud.io/timescale/timescaledb/gpgkey \
-      | gpg --dearmor -o /usr/share/keyrings/timescaledb.gpg && \
-    echo "deb [signed-by=/usr/share/keyrings/timescaledb.gpg] \
-      https://packagecloud.io/timescale/timescaledb/ubuntu/ noble main" \
-      > /etc/apt/sources.list.d/timescaledb.list && \
-    apt-get update
-
-# ---------------------------------------------------------------------------
-# Stage 2: Python via pyenv
-# ---------------------------------------------------------------------------
-ENV PYENV_ROOT=/opt/pyenv
-ENV PATH="${PYENV_ROOT}/shims:${PYENV_ROOT}/bin:${PATH}"
-
-RUN set -euo pipefail && \
-    curl -fsSL https://pyenv.run | bash && \
-    # Install Python versions
-    pyenv install ${PYTHON_313} && \
-    pyenv install ${PYTHON_312} && \
-    pyenv install ${PYTHON_311} && \
-    pyenv install ${PYTHON_310} && \
-    pyenv global ${PYTHON_DEFAULT} && \
-    pyenv rehash && \
-    # Upgrade pip + install dev tools for each version
-    for ver in ${PYTHON_313} ${PYTHON_312} ${PYTHON_311} ${PYTHON_310}; do \
-        PYENV_VERSION=${ver} pip install --no-cache-dir --upgrade pip && \
-        PYENV_VERSION=${ver} pip install --no-cache-dir ruff mypy pytest; \
-    done && \
-    pyenv global ${PYTHON_DEFAULT} && \
-    # Install pipx, poetry, uv globally under default Python
-    pip install --no-cache-dir pipx && \
-    pipx ensurepath && \
-    pipx install poetry && \
-    pipx install uv && \
-    rm -rf /tmp/*
-
-# ---------------------------------------------------------------------------
-# Stage 3: Node.js via nvm
-# ---------------------------------------------------------------------------
-ENV NVM_DIR=/opt/nvm
-ENV PATH="${NVM_DIR}/versions/node/v${NODE_DEFAULT}/bin:${PATH}"
-
-RUN set -euo pipefail && \
-    mkdir -p ${NVM_DIR} && \
-    curl -fsSL "https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.sh" | bash && \
-    # Source nvm for this RUN layer
-    source "${NVM_DIR}/nvm.sh" && \
-    # Default packages installed with every node version
-    echo "prettier" > "${NVM_DIR}/default-packages" && \
-    echo "eslint" >> "${NVM_DIR}/default-packages" && \
-    echo "typescript" >> "${NVM_DIR}/default-packages" && \
-    # Install Node versions
-    nvm install ${NODE_22} && \
-    nvm install ${NODE_20} && \
-    nvm install ${NODE_18} && \
-    nvm alias default ${NODE_DEFAULT} && \
-    nvm use default && \
-    # Install pnpm for each version
-    for ver in ${NODE_22} ${NODE_20} ${NODE_18}; do \
-        nvm use ${ver} && \
-        npm install -g pnpm yarn; \
-    done && \
-    nvm use default && \
-    rm -rf /tmp/*
-
-# ---------------------------------------------------------------------------
-# Stage 4: Bun
-# ---------------------------------------------------------------------------
-ENV BUN_INSTALL=/opt/bun
-ENV PATH="${BUN_INSTALL}/bin:${PATH}"
-
-RUN set -euo pipefail && \
-    curl -fsSL https://bun.sh/install | BUN_INSTALL=${BUN_INSTALL} bash && \
-    bun --version && \
-    rm -rf /tmp/*
-
-# ---------------------------------------------------------------------------
-# Stage 5: Rust via rustup
-# ---------------------------------------------------------------------------
-ENV RUSTUP_HOME=/opt/rustup
-ENV CARGO_HOME=/opt/cargo
-ENV PATH="${CARGO_HOME}/bin:${PATH}"
-
-RUN set -euo pipefail && \
-    curl -fsSL https://sh.rustup.rs | sh -s -- \
-        -y \
-        --default-toolchain ${RUST_DEFAULT} \
-        --no-modify-path && \
-    rustup toolchain install ${RUST_187} && \
-    rustup toolchain install ${RUST_186} && \
-    rustup toolchain install ${RUST_185} && \
-    rustup default ${RUST_DEFAULT} && \
-    rustup component add rustfmt clippy rust-analyzer && \
-    rm -rf /tmp/*
-
-# ---------------------------------------------------------------------------
-# Stage 6: mise (used for Go, Ruby, Java)
-# ---------------------------------------------------------------------------
-ENV MISE_DATA_DIR=/opt/mise
-ENV MISE_CACHE_DIR=/opt/mise/cache
-ENV PATH="${MISE_DATA_DIR}/shims:${PATH}"
-
-RUN set -euo pipefail && \
-    MISE_VERSION=$(curl -fsSL "https://api.github.com/repos/jdx/mise/releases/latest" | \
-      grep '"tag_name"' | sed 's/.*"tag_name": *"//;s/".*//' ) && \
-    curl -fsSL "https://github.com/jdx/mise/releases/download/${MISE_VERSION}/mise-${MISE_VERSION}-linux-x64.tar.gz" \
-      -o /tmp/mise.tar.gz && \
-    tar -xzf /tmp/mise.tar.gz -C /tmp && \
-    install -m 755 /tmp/mise/bin/mise /usr/local/bin/mise && \
-    mise --version && \
-    rm -rf /tmp/*
-
-# ---------------------------------------------------------------------------
-# Stage 7: Go via mise
-# ---------------------------------------------------------------------------
-RUN set -euo pipefail && \
-    mise use --global go@${GO_124} && \
-    mise use --global go@${GO_123} && \
-    mise use --global go@${GO_122} && \
-    mise use --global go@${GO_DEFAULT} && \
-    mise reshim && \
-    # Install golangci-lint
-    go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest && \
-    rm -rf /tmp/*
-
-# ---------------------------------------------------------------------------
-# Stage 8: Ruby via mise
-# ---------------------------------------------------------------------------
-RUN set -euo pipefail && \
-    mise use --global ruby@${RUBY_34} && \
-    mise use --global ruby@${RUBY_33} && \
-    mise use --global ruby@${RUBY_DEFAULT} && \
-    mise reshim && \
-    rm -rf /tmp/*
-
-# ---------------------------------------------------------------------------
-# Stage 9: PHP via ondrej/php PPA (7 versions: php7.4 through php8.5)
-#
-# `apt-get update` refreshes the list cache that ondrej PPA rolls
-# forward roughly weekly; without it apt-get tries to fetch the
-# version recorded in stage 1's cached list and hits 404 on the
-# Launchpad CDN as soon as the PPA bumps a patch revision.
-# ---------------------------------------------------------------------------
-RUN set -euo pipefail && \
-    apt-get update && \
-    EXTENSIONS="bcmath bz2 curl dev exif gd gmp igbinary imagick imap intl \
-      ldap mbstring memcached msgpack mysql opcache pcov pgsql readline \
-      redis soap sqlite3 tidy xml xsl yaml zip xdebug apcu" && \
-    for ver in 7.4 8.0 8.1 8.2 8.3 8.4 8.5; do \
-      echo "Installing PHP ${ver} + extensions..." && \
-      pkg_list="php${ver}-cli" && \
-      for ext in ${EXTENSIONS}; do \
-        pkg_list="${pkg_list} php${ver}-${ext}"; \
-      done && \
-      apt-get install -y --no-install-recommends ${pkg_list} || true; \
-    done && \
-    for ver in 8.2 8.3 8.4 8.5; do \
-      apt-get install -y --no-install-recommends php${ver}-swoole 2>/dev/null || true; \
-    done && \
-    update-alternatives --set php /usr/bin/php${PHP_DEFAULT} && \
-    update-alternatives --set phpize /usr/bin/phpize${PHP_DEFAULT} 2>/dev/null || true && \
-    update-alternatives --set php-config /usr/bin/php-config${PHP_DEFAULT} 2>/dev/null || true && \
-    curl -fsSL https://getcomposer.org/installer | php -- \
-      --install-dir=/usr/local/bin --filename=composer && \
-    apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/*
-
-# ---------------------------------------------------------------------------
-# Stage 9b: PostgreSQL 17 + extensions
-# ---------------------------------------------------------------------------
-RUN set -euo pipefail && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends \
-      postgresql-17 postgresql-17-pgvector postgresql-17-postgis-3 \
-      postgresql-17-cron timescaledb-2-postgresql-17 && \
-    for ver in 14 15 16; do \
-      apt-get install -y --no-install-recommends \
-        postgresql-client-${ver} postgresql-server-dev-${ver}; \
-    done && \
-    echo "local all all trust" > /etc/postgresql/17/main/pg_hba.conf && \
-    echo "host all all 127.0.0.1/32 trust" >> /etc/postgresql/17/main/pg_hba.conf && \
-    echo "host all all ::1/128 trust" >> /etc/postgresql/17/main/pg_hba.conf && \
-    su postgres -c "pg_ctlcluster 17 main start" && \
-    su postgres -c "createuser -s agent" && \
-    su postgres -c "createdb agent" && \
-    su postgres -c "pg_ctlcluster 17 main stop" && \
-    apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/*
-
-# ---------------------------------------------------------------------------
-# Stage 9c: MySQL client + SQLite + Redis
-# ---------------------------------------------------------------------------
-RUN set -euo pipefail && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends \
-      mysql-client libmysqlclient-dev sqlite3 libsqlite3-dev \
-      redis-server redis-tools && \
-    sed -i 's/^bind .*/bind 127.0.0.1/' /etc/redis/redis.conf && \
-    sed -i 's/^daemonize .*/daemonize no/' /etc/redis/redis.conf && \
-    apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/*
-
-# ---------------------------------------------------------------------------
-# Stage 10: Java via mise + build tools
-# ---------------------------------------------------------------------------
-RUN --mount=type=secret,id=github_token \
-    set -euo pipefail && \
-    if [ -f /run/secrets/github_token ]; then export GITHUB_TOKEN=$(cat /run/secrets/github_token); fi && \
-    mise use --global java@${JAVA_24} && \
-    mise use --global java@${JAVA_21} && \
-    mise use --global java@${JAVA_17} && \
-    mise use --global java@${JAVA_DEFAULT} && \
-    mise use --global gradle@latest && \
-    mise use --global maven@latest && \
-    mise reshim && \
-    rm -rf /tmp/*
-
-# ---------------------------------------------------------------------------
-# Stage 11: Flutter (git clone, no Android/iOS)
-# ---------------------------------------------------------------------------
-ENV FLUTTER_ROOT=/opt/flutter
-ENV PATH="${FLUTTER_ROOT}/bin:${FLUTTER_ROOT}/bin/cache/dart-sdk/bin:${PATH}"
-
-RUN set -euo pipefail && \
-    git clone --depth 1 --branch ${FLUTTER_CHANNEL} https://github.com/flutter/flutter.git ${FLUTTER_ROOT} && \
-    git config --global --add safe.directory ${FLUTTER_ROOT} && \
-    flutter precache --no-android --no-ios --no-web && \
-    flutter --version && \
-    rm -rf /tmp/*
-
-# ---------------------------------------------------------------------------
-# Stage 12b: Developer Tooling (LSP servers, linters, formatters, build tools)
+# Agent: runtimes and tools, owned by the user that runs them
 # ---------------------------------------------------------------------------
 
-# ── System tools (ripgrep, jq, make already in Stage 1) ──
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    fd-find \
-    tree \
-    htop \
-    less \
-    cmake \
-    shellcheck \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
+USER agent
+WORKDIR /home/agent
 
-# ── GitHub CLI ──
-RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-    | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg && \
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] \
-    https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list && \
-    apt-get update && apt-get install -y gh && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+# /usr/local/bin comes first so claude and kodizm-pg cannot be shadowed by a user-space install.
+# PGHOST is kodizm-pg's socket directory, so a bare `psql` reaches the agent database.
+# The CLIs are pinned, so their self-updaters stay off.
+ENV HOME=/home/agent \
+    PATH=/usr/local/sbin:/usr/local/bin:/opt/node/bin:/opt/bun/bin:/opt/go/bin:/home/agent/go/bin:/opt/flutter/bin:/home/agent/.local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    BUN_INSTALL=/opt/bun \
+    PGHOST=/home/agent/.local/share/kodizm-pg/run \
+    PGUSER=agent \
+    PGDATABASE=agent \
+    DISABLE_AUTOUPDATER=1 \
+    OPENCODE_DISABLE_AUTOUPDATE=true
 
-# ── Node-based LSP servers + tools (use default Node version) ──
-RUN source ${NVM_DIR}/nvm.sh && nvm use default && \
-    npm install -g \
-      intelephense \
-      basedpyright \
-      @vtsls/language-server \
-      @vue/language-server \
-      @vue/typescript-plugin \
-      vscode-langservers-extracted \
-      yaml-language-server \
-      bash-language-server \
-      @tailwindcss/language-server \
-      @astrojs/language-server \
-      sass \
-      postcss \
-      postcss-cli \
-      autoprefixer
+# renovate: datasource=github-releases depName=nodejs/node extractVersion=^v(?<version>.+)$
+ARG NODE_VERSION=24.22.2
+RUN tarball="node-v${NODE_VERSION}-linux-x64.tar.xz" \
+ && base="https://nodejs.org/dist/v${NODE_VERSION}" \
+ && curl -fsSLo "/tmp/${tarball}" "${base}/${tarball}" \
+ && expected="$(curl -fsSL "${base}/SHASUMS256.txt" | grep " ${tarball}\$")" \
+ && echo "${expected%% *}  /tmp/${tarball}" | sha256sum -c - \
+ && tar -xJf "/tmp/${tarball}" --strip-components=1 -C /opt/node \
+ && rm "/tmp/${tarball}"
 
-# ── Marksman (Markdown LSP) — standalone binary, not on npm ──
-RUN curl -fsSL https://github.com/artempyanykh/marksman/releases/latest/download/marksman-linux-x64 \
-    -o /usr/local/bin/marksman && chmod +x /usr/local/bin/marksman
+# The bridge runs under bun (its bin is built with --target=bun).
+# renovate: datasource=github-releases depName=oven-sh/bun extractVersion=^bun-v(?<version>.+)$
+ARG BUN_VERSION=1.4.4
+RUN base="https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}" \
+ && curl -fsSLo /tmp/bun-linux-x64.zip "${base}/bun-linux-x64.zip" \
+ && expected="$(curl -fsSL "${base}/SHASUMS256.txt" | grep ' bun-linux-x64.zip$')" \
+ && echo "${expected%% *}  /tmp/bun-linux-x64.zip" | sha256sum -c - \
+ && unzip -q -j /tmp/bun-linux-x64.zip bun-linux-x64/bun -d /opt/bun/bin \
+ && chmod 0755 /opt/bun/bin/bun \
+ && ln -s bun /opt/bun/bin/bunx \
+ && rm /tmp/bun-linux-x64.zip
 
-# ── Rust-based tools (rustup + cargo already in PATH via ENV) ──
-RUN rustup component add rust-analyzer && \
-    cargo install taplo-cli --locked
+# renovate: datasource=golang-version depName=go
+ARG GO_VERSION=1.27.3
+RUN tarball="go${GO_VERSION}.linux-amd64.tar.gz" \
+ && curl -fsSLo "/tmp/${tarball}" "https://go.dev/dl/${tarball}" \
+ && expected="$(curl -fsSL 'https://go.dev/dl/?mode=json&include=all' \
+      | jq -er --arg file "${tarball}" '.[].files[] | select(.filename == $file) | .sha256')" \
+ && echo "${expected}  /tmp/${tarball}" | sha256sum -c - \
+ && tar -xzf "/tmp/${tarball}" --strip-components=1 -C /opt/go \
+ && rm "/tmp/${tarball}"
 
-# ── Go-based tools (go available via mise shims) ──
-RUN go install golang.org/x/tools/gopls@latest && \
-    go install github.com/go-delve/delve/cmd/dlv@latest
+# Flutter is the largest piece, so the clone and the artifact download are separate layers.
+# renovate: datasource=github-tags depName=flutter/flutter versioning=regex:^(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)$
+ARG FLUTTER_VERSION=3.47.9
+RUN git clone --depth 1 --branch "${FLUTTER_VERSION}" https://github.com/flutter/flutter.git /opt/flutter
 
-# ── Ruby tools ──
-RUN gem install ruby-lsp rubocop bundler --no-document
+# Only what `flutter analyze` and `flutter test` need: the Dart SDK and the host test engine.
+RUN flutter config --no-analytics --no-cli-animations \
+ && dart --disable-analytics \
+ && flutter precache --universal --no-android --no-ios --no-web --no-linux --no-windows --no-macos --no-fuchsia \
+ && flutter --version
 
-# ── PHP tools (via Composer global) ──
-RUN composer global require \
-    phpstan/phpstan \
-    friendsofphp/php-cs-fixer \
-    squizlabs/php_codesniffer \
-    --no-interaction --no-progress && \
-    echo 'export PATH="$HOME/.composer/vendor/bin:$PATH"' >> /etc/profile.d/composer-global.sh
+# Language servers the ac-lsp plugin launches (Dart's ships with Flutter).
+# typescript-language-server resolves the global typescript as its sibling under /opt/node.
+# renovate: datasource=npm depName=intelephense
+ARG INTELEPHENSE_VERSION=1.18.5
+# renovate: datasource=npm depName=typescript
+ARG TYPESCRIPT_VERSION=6.0.3
+# renovate: datasource=npm depName=typescript-language-server
+ARG TYPESCRIPT_LANGUAGE_SERVER_VERSION=6.0.3
+# renovate: datasource=pypi depName=pyrefly
+ARG PYREFLY_VERSION=1.4.0
+# renovate: datasource=go depName=golang.org/x/tools/gopls extractVersion=^v(?<version>.+)$
+ARG GOPLS_VERSION=0.24.0
+RUN npm_config_cache=/tmp/npm-cache npm install --global --no-fund --no-audit \
+      "intelephense@${INTELEPHENSE_VERSION}" \
+      "typescript@${TYPESCRIPT_VERSION}" \
+      "typescript-language-server@${TYPESCRIPT_LANGUAGE_SERVER_VERSION}" \
+ && rm -rf /tmp/npm-cache \
+ && UV_CACHE_DIR=/tmp/uv-cache UV_PYTHON_DOWNLOADS=never \
+      uv tool install --python /usr/bin/python3.13 "pyrefly==${PYREFLY_VERSION}" \
+ && rm -rf /tmp/uv-cache \
+ && export GOCACHE=/tmp/go-cache GOMODCACHE=/tmp/go-mod \
+ && go install "golang.org/x/tools/gopls@v${GOPLS_VERSION}" \
+ && go clean -cache -modcache
 
-# ── Python tools (system-wide via default pyenv Python) ──
-RUN pip install --no-cache-dir \
-    debugpy
+# corepack ships with Node 24; pnpm is pinned through npm so its version is never resolved at runtime.
+# renovate: datasource=npm depName=pnpm
+ARG PNPM_VERSION=12.16.1
+# renovate: datasource=npm depName=opencode-ai
+ARG OPENCODE_VERSION=1.19.5
+RUN npm_config_cache=/tmp/npm-cache npm install --global --no-fund --no-audit \
+      "pnpm@${PNPM_VERSION}" \
+      "opencode-ai@${OPENCODE_VERSION}" \
+ && rm -rf /tmp/npm-cache
 
-# ---------------------------------------------------------------------------
-# Stage 13: Profile setup — ensure login shells activate all runtimes
-# ---------------------------------------------------------------------------
-RUN cat >> /etc/profile <<'PROFILE'
-# --- Kodizm universal agent runtime activation ---
+# ac-lsp at an exact commit; only its plugin directory is extracted. The opencode config is derived
+# from the same .lsp.json so both CLIs launch identical servers.
+COPY --chown=agent:agent scripts/gen-opencode-lsp.mjs /opt/kodizm/lib/gen-opencode-lsp.mjs
+# renovate: datasource=git-refs depName=https://github.com/anilcancakir/claude-code currentValue=main
+ARG AC_LSP_VERSION=bb8ea3cdc17fae83f754d060499a7fe96dd1c3b3
+RUN mkdir /opt/kodizm/plugins/ac-lsp \
+ && curl -fsSL "https://codeload.github.com/anilcancakir/claude-code/tar.gz/${AC_LSP_VERSION}" \
+      | tar -xz --strip-components=3 -C /opt/kodizm/plugins/ac-lsp "claude-code-${AC_LSP_VERSION}/plugins/ac-lsp" \
+ && test -f /opt/kodizm/plugins/ac-lsp/.lsp.json \
+ && test -f /opt/kodizm/plugins/ac-lsp/bin/lsp-proxy.js \
+ && node /opt/kodizm/lib/gen-opencode-lsp.mjs \
+      /opt/kodizm/plugins/ac-lsp/.lsp.json \
+      /opt/kodizm/opencode.lsp.json \
+      /opt/kodizm/plugins/ac-lsp
 
-# pyenv
-export PYENV_ROOT="/opt/pyenv"
-export PATH="${PYENV_ROOT}/shims:${PYENV_ROOT}/bin:${PATH}"
-eval "$(pyenv init -)"
-
-# nvm
-export NVM_DIR="/opt/nvm"
-[ -s "${NVM_DIR}/nvm.sh" ] && source "${NVM_DIR}/nvm.sh"
-
-# Bun
-export BUN_INSTALL="/opt/bun"
-export PATH="${BUN_INSTALL}/bin:${PATH}"
-
-# Rust
-export RUSTUP_HOME="/opt/rustup"
-export CARGO_HOME="/opt/cargo"
-export PATH="${CARGO_HOME}/bin:${PATH}"
-
-# mise (Go, Ruby, Java)
-export MISE_DATA_DIR="/opt/mise"
-export MISE_CACHE_DIR="/opt/mise/cache"
-eval "$(mise activate bash)"
-
-# Flutter
-export FLUTTER_ROOT="/opt/flutter"
-export PATH="${FLUTTER_ROOT}/bin:${FLUTTER_ROOT}/bin/cache/dart-sdk/bin:${PATH}"
-
-# pipx
-export PATH="${PATH}:/root/.local/bin:/home/agent/.local/bin"
-PROFILE
-
-# ---------------------------------------------------------------------------
-# Stage 14: Non-root user — agent (UID 1001)
-# ---------------------------------------------------------------------------
-RUN set -euo pipefail && \
-    groupadd --gid 1001 agent && \
-    useradd --uid 1001 --gid 1001 --create-home --shell /bin/bash agent && \
-    # Create tool/config directories for agent user
-    mkdir -p /home/agent/.claude \
-             /home/agent/.config/opencode \
-             /home/agent/.pub-cache \
-             /home/agent/.dart \
-             /home/agent/.local/bin \
-             /home/agent/.local/share/pipx \
-             /home/agent/.cache \
-             /home/agent/.npm \
-             /home/agent/.composer \
-             /var/log/kodizm-debug && \
-    # Chown all tool directories to agent (Phase 5: include /var/log/kodizm-debug
-    # so the named-volume first-mount inherits agent ownership; without this the
-    # debug recorder fails with EACCES when writing the per-session JSONL).
-    chown -R agent:agent \
-        /opt/pyenv \
-        /opt/nvm \
-        /opt/bun \
-        /opt/rustup \
-        /opt/cargo \
-        /opt/mise \
-        /opt/flutter \
-        /var/log/kodizm-debug \
-        /home/agent && \
-    # Copy profile to agent's bashrc for non-login shells too
-    cp /etc/profile /home/agent/.profile_kodizm && \
-    echo 'source /home/agent/.profile_kodizm' >> /home/agent/.bashrc && \
-    chown agent:agent /home/agent/.bashrc /home/agent/.profile_kodizm && \
-    # Flutter git safe.directory for agent user
-    su -c "git config --global --add safe.directory /opt/flutter" agent
+# The bridge ships often, so it sits last; it carries its exact SDK pin in config.claudeAgentSdk.
+# renovate: datasource=npm depName=@kodizm/acp
+ARG KODIZM_ACP_VERSION=0.7.0
+RUN npm_config_cache=/tmp/npm-cache npm install --global --no-fund --no-audit --omit=optional \
+      "@kodizm/acp@${KODIZM_ACP_VERSION}" \
+ && rm -rf /tmp/npm-cache
 
 # ---------------------------------------------------------------------------
-# Stage 14 CLI: Claude Code + OpenCode (native binaries, no npm)
+# Claude Code: the CLI from the SDK platform package the bridge is built against
 # ---------------------------------------------------------------------------
-#
-# Placed after Stage 14 on purpose. Both versions move often (the CLI by
-# hand, opencode on every weekly build), and a changed ARG misses the
-# cache for every RUN after it. Stage 14's `chown -R` over the runtimes
-# copies about 4.3 GB into a fresh layer, so with this block ahead of it
-# a CLI bump shipped that 4.3 GB again and made a 5.5 GB pull out of a
-# few hundred MB of binaries. Nothing between Stage 12b and Stage 14
-# needs either CLI; Stage 14a, which runs `claude` once, is the first.
 
-# Claude Code: native standalone binary (npm deprecated since Feb 2026)
-# Install as root, then copy to /usr/local/bin so agent user can execute it
-#
-# Pinned to an exact version and bumped by hand in the same commit as
-# KODIZM_ACP_VERSION. @kodizm/acp drives this binary through
-# claude-agent-sdk, and SDK 0.3.N ships as the pair of CLI 2.1.N (its
-# package.json `claudeCodeVersion`). Nothing enforces that pairing at
-# runtime, and the CLI changes behaviour without a breaking-change tag:
-# 2.1.277 made a resumed turn's cost cumulative. A floating channel let
-# the weekly cron ship a CLI no smoke had run against into every
-# container through auto_rolling_restart; `stable` meanwhile sat on
-# 2.1.267 under an SDK built for 2.1.280.
-ENV DISABLE_AUTOUPDATER=1
-ARG CLAUDE_CODE_VERSION=2.1.280
-RUN set -euo pipefail && \
-    curl -fsSL https://claude.ai/install.sh | bash -s "${CLAUDE_CODE_VERSION}" && \
-    cp /root/.local/bin/claude /usr/local/bin/claude && \
-    chmod 755 /usr/local/bin/claude
+# A separate stage, so the binary lands root-owned in /usr/local/bin through COPY while every
+# install above stays with the agent. The build fails unless the binary matches the official
+# release manifest for the CLI version that SDK bundles, and reports that version itself.
+FROM toolchain AS claude-cli
 
-# OpenCode: native Bun-compiled binary from GitHub Releases
-#
-# Pinned by tag rather than the `releases/latest` redirect. A `latest`
-# URL inside a RUN never enters the layer cache key, so the layer stayed
-# cached across builds and opencode silently froze at whatever version
-# the layer was first built with; it only refreshed by accident, when
-# a Claude release cache-buster (since replaced by the pin above)
-# happened to invalidate it. The CI
-# workflow resolves the newest tag and passes it as a build arg, so the
-# version is both current and recorded in the build log. The default
-# below is the floor for a bare local `docker build`.
-#
-# The upstream repo moved from `sst/opencode` to `anomalyco/opencode`
-# during the 2026 org rename; GitHub still redirects the old path, but
-# the canonical owner is spelled out here so the redirect is not load
-# bearing.
-ARG OPENCODE_VERSION=1.18.19
+# Inherited from toolchain already; restated because hadolint reads SHELL per stage.
+SHELL ["/bin/bash", "-o", "pipefail", "-e", "-u", "-c"]
 
-RUN set -euo pipefail && \
-    ARCH="$(dpkg --print-architecture)" && \
-    case "${ARCH}" in \
-        amd64) OC_ARCH="x64" ;; \
-        arm64) OC_ARCH="arm64" ;; \
-        *) echo "Unsupported arch: ${ARCH}" && exit 1 ;; \
-    esac && \
-    curl -fsSL "https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/opencode-linux-${OC_ARCH}.tar.gz" \
-    | tar -xz -C /usr/local/bin && \
-    chmod +x /usr/local/bin/opencode
+RUN sdk_version="$(jq -r '.config.claudeAgentSdk // empty' /opt/node/lib/node_modules/@kodizm/acp/package.json)" \
+ && : "${sdk_version:?the installed @kodizm/acp has no config.claudeAgentSdk}" \
+ && cli_version="$(npm view "@anthropic-ai/claude-agent-sdk@${sdk_version}" claudeCodeVersion)" \
+ && : "${cli_version:?@anthropic-ai/claude-agent-sdk@${sdk_version} names no claudeCodeVersion}" \
+ && workdir="$(mktemp -d)" \
+ && tarball="$(npm_config_cache="${workdir}/npm-cache" npm pack --silent --pack-destination "${workdir}" \
+      "@anthropic-ai/claude-agent-sdk-linux-x64@${sdk_version}")" \
+ && tar -xzf "${workdir}/${tarball}" -C "${workdir}" package/claude \
+ && expected="$(curl -fsSL "https://downloads.claude.ai/claude-code-releases/${cli_version}/manifest.json" \
+      | jq -er '.platforms["linux-x64"].checksum')" \
+ && echo "${expected}  ${workdir}/package/claude" | sha256sum -c - \
+ && install -D -m 0755 "${workdir}/package/claude" /tmp/claude-cli/claude \
+ && reported="$(HOME="${workdir}" /tmp/claude-cli/claude --version)" \
+ && if [[ "${reported%% *}" != "${cli_version}" ]]; then \
+      echo "claude reports ${reported}, SDK ${sdk_version} bundles ${cli_version}" >&2; \
+      exit 1; \
+    fi
 
 # ---------------------------------------------------------------------------
-# Stage 14a: Claude Code default config bootstrap
+# Final image
 # ---------------------------------------------------------------------------
-# Run CC once as agent user to generate its native ~/.claude.json (feature
-# flags, caches, migration markers) and ~/.claude/ directory structure.
-# This ensures injectCredentials() can merge INTO existing config rather
-# than blind-overwriting it. Uses a dummy API key to trigger full init.
-# Default settings.json is copied from docker/defaults/ — edit there to
-# change base CC settings for all containers.
-# Persist defaults to /opt/kodizm/defaults/ — outside the volume mount at
-# ~/.claude so entrypoint can sync them on every boot.
-# Plugin seed dir: CC reads CLAUDE_CODE_PLUGIN_SEED_DIR at startup and
-# merges seed marketplaces into ~/.claude/plugins/known_marketplaces.json.
-COPY --chown=agent:agent defaults/plugins/ /opt/kodizm/defaults/plugins/
-COPY --chown=agent:agent defaults/settings.json /opt/kodizm/defaults/settings.json
-COPY --chown=agent:agent defaults/skills/ /opt/kodizm/defaults/skills/
-COPY --chown=agent:agent defaults/agents/ /opt/kodizm/defaults/agents/
-COPY --chown=agent:agent defaults/hooks/ /opt/kodizm/defaults/hooks/
-COPY --chown=agent:agent defaults/opencode/ /opt/kodizm/defaults/opencode/
-ENV CLAUDE_CODE_PLUGIN_SEED_DIR=/opt/kodizm/defaults/plugins
 
-COPY defaults/settings.json /home/agent/.claude/settings.json
-COPY defaults/skills/ /home/agent/.claude/skills/
-COPY defaults/agents/ /home/agent/.claude/agents/
-COPY --chown=agent:agent defaults/hooks/ /home/agent/.claude/hooks/
-RUN chmod +x /home/agent/.claude/hooks/*.sh
-RUN su -l agent -c "CLAUDE_CODE_PLUGIN_SEED_DIR=/opt/kodizm/defaults/plugins ANTHROPIC_API_KEY=sk-ant-dummy DISABLE_AUTOUPDATER=1 claude -p 'init' 2>/dev/null || true" && \
-    ls -la /home/agent/.claude.json && \
-    cp /opt/kodizm/defaults/settings.json /home/agent/.claude/settings.json && \
-    chown -R agent:agent /home/agent/.claude/ && \
-    echo '[Dockerfile] CC default config + skills + LSP plugins bootstrapped'
+FROM toolchain
 
-# ---------------------------------------------------------------------------
-# Stage 15: Workspace + entrypoint
-# ---------------------------------------------------------------------------
-COPY entrypoint.sh /opt/kodizm/entrypoint.sh
-COPY setup.sh /opt/kodizm/setup.sh
-COPY proxy/ /opt/kodizm/proxy/
-RUN chmod +x /opt/kodizm/entrypoint.sh /opt/kodizm/setup.sh && \
-    mkdir -p /workspace /task-workspaces && \
-    chown agent:agent /workspace /task-workspaces /opt/kodizm
+COPY --from=claude-cli --chown=root:root --chmod=0755 /tmp/claude-cli/claude /usr/local/bin/claude
+COPY --chown=root:root --chmod=0755 scripts/kodizm-pg /usr/local/bin/kodizm-pg
 
-# ---------------------------------------------------------------------------
-# Stage 17: kodizm-acp (deliberately last, most volatile)
-# ---------------------------------------------------------------------------
-#
-# The legacy per-CLI adapter layer (claude-agent-acp + opencode acp
-# shim) collapsed into a single bridge, `@kodizm/acp`. The Kodizm
-# control plane spawns this one bin per session with
-# `KODIZM_BACKEND=claude|opencode` env; the bridge dispatches
-# internally to each backend's native interface (Claude SDK, opencode
-# HTTP server).
-#
-# Installed globally so the control plane can spawn it via
-# `docker exec -i <container> kodizm-acp` without npx round-trips.
-# Pinned to KODIZM_ACP_VERSION; bump via that ARG.
-#
-# Cache strategy: this stage sits LAST because kodizm-acp ships often
-# (sometimes multiple times per day during active development). Every
-# layer above is cached; a version bump rebuilds only this stage's
-# install + symlink layers, taking <1 minute end-to-end (npm fetch +
-# image push) instead of the full 20+ minute language-tooling rebuild.
+# Recorded from the installed binaries, so the manifest cannot drift from what the image runs.
+# The version probes get a throwaway HOME: ~/.claude is a volume mountpoint and must stay empty.
+RUN probe_home="$(mktemp -d)" \
+ && claude_version="$(HOME="${probe_home}" claude --version)" \
+ && opencode_version="$(HOME="${probe_home}" opencode --version)" \
+ && rm -rf "${probe_home}" \
+ && acp_package=/opt/node/lib/node_modules/@kodizm/acp/package.json \
+ && kodizm_acp_version="$(jq -er .version "${acp_package}")" \
+ && claude_agent_sdk_version="$(jq -er .config.claudeAgentSdk "${acp_package}")" \
+ && php_version="$(php -r 'echo PHP_MAJOR_VERSION, ".", PHP_MINOR_VERSION;')" \
+ && node_version="$(node -p 'process.versions.node.split(".")[0]')" \
+ && jq -n \
+      --arg claude "${claude_version%% *}" \
+      --arg opencode "${opencode_version}" \
+      --arg kodizm_acp "${kodizm_acp_version}" \
+      --arg claude_agent_sdk "${claude_agent_sdk_version}" \
+      --arg php "${php_version}" \
+      --arg node "${node_version}" \
+      '$ARGS.named' \
+      > /opt/kodizm/versions.json \
+ && jq -e 'all(.[]; test("^[0-9]+(\\.[0-9]+)*$"))' /opt/kodizm/versions.json \
+ && cat /opt/kodizm/versions.json
 
-ARG KODIZM_ACP_VERSION=0.6.9
-
-RUN source ${NVM_DIR}/nvm.sh && nvm use default && \
-    npm install -g "@kodizm/acp@${KODIZM_ACP_VERSION}"
-
-RUN set -euo pipefail && \
-    NODE_BIN="${NVM_DIR}/versions/node/v$(cat ${NVM_DIR}/alias/default)/bin" && \
-    ln -sf "${NODE_BIN}/kodizm-acp" /usr/local/bin/kodizm-acp
-
-# ---------------------------------------------------------------------------
-# Stage 17b: CLI smoke gate
-# ---------------------------------------------------------------------------
-#
-# Fail the build when an agent-facing binary is missing or cannot report
-# its own version, and record the resolved versions in the build log.
-# Without this gate the only way to learn which claude / opencode a
-# published image carried was to pull it and run it, or to read the
-# layer timestamps out of the GHCR config blob; a silently frozen CLI
-# therefore survived every build. Runs as `agent` because that is the
-# user the control plane execs.
-#
-# claude and opencode are self-contained native binaries, so their
-# version output is asserted directly. kodizm-acp is a Node entry point
-# behind nvm, whose resolution depends on the env the control plane
-# injects at exec time, so only its presence is asserted here rather
-# than invoking it under a login shell.
-#
-# The versions are captured into variables rather than interpolated
-# straight into `echo`. Under `set -e` the exit status of a command
-# substitution inside an argument is discarded (`echo "$(false)"`
-# succeeds), so the inlined form printed an empty version and passed
-# the build; a plain assignment propagates the failure. The `:?`
-# expansions then catch a binary that exits 0 while printing nothing.
-#
-# claude is also held to the pinned CLAUDE_CODE_VERSION: a non-empty
-# answer from the wrong binary passed this gate before. The ARG is
-# spliced in by the outer shell because `su -l` starts from a clean env.
-RUN su -l agent -c 'set -euo pipefail; \
-      claude_version="$(claude --version)"; \
-      opencode_version="$(opencode --version)"; \
-      : "${claude_version:?claude --version produced no output}"; \
-      : "${opencode_version:?opencode --version produced no output}"; \
-      case "${claude_version}" in \
-        "'"${CLAUDE_CODE_VERSION}"' "*) ;; \
-        *) echo "expected claude '"${CLAUDE_CODE_VERSION}"', got ${claude_version}" >&2; exit 1 ;; \
-      esac; \
-      echo "kodizm-cli-versions: claude=${claude_version}"; \
-      echo "kodizm-cli-versions: opencode=${opencode_version}"; \
-      test -x /usr/local/bin/kodizm-acp'
-
-# ---------------------------------------------------------------------------
-# Stage 18: Final image metadata
-# ---------------------------------------------------------------------------
+LABEL org.opencontainers.image.title="kodizm-ai-docker" \
+      org.opencontainers.image.description="Kodizm agent image: Claude Code, opencode, kodizm-acp and toolchains" \
+      org.opencontainers.image.source="https://github.com/anilcancakir/kodizm-ai-docker"
 
 WORKDIR /workspace
 
-EXPOSE 4096
-
-ENTRYPOINT ["/usr/bin/tini", "--", "/opt/kodizm/entrypoint.sh"]
-CMD ["bash", "--login"]
+ENTRYPOINT ["tini", "--"]
+CMD ["sleep", "infinity"]
