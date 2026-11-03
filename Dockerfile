@@ -207,10 +207,15 @@ RUN npm_config_cache=/tmp/npm-cache npm install --global --no-fund --no-audit \
 # corepack ships with Node 24; pnpm is pinned through npm so its version is never resolved at runtime.
 # renovate: datasource=npm depName=pnpm
 ARG PNPM_VERSION=12.16.1
+# DependencyInstallService runs `yarn install --frozen-lockfile` for a repository with a yarn.lock;
+# that flag is yarn 1 (classic), the only line the npm package `yarn` publishes.
+# renovate: datasource=npm depName=yarn
+ARG YARN_VERSION=1.22.22
 # renovate: datasource=npm depName=opencode-ai
 ARG OPENCODE_VERSION=1.19.5
 RUN npm_config_cache=/tmp/npm-cache npm install --global --no-fund --no-audit \
       "pnpm@${PNPM_VERSION}" \
+      "yarn@${YARN_VERSION}" \
       "opencode-ai@${OPENCODE_VERSION}" \
  && rm -rf /tmp/npm-cache
 

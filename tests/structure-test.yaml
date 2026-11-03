@@ -36,6 +36,10 @@ commandTests:
     command: "pnpm"
     args: ["--version"]
     expectedOutput: ["\\d+\\."]
+  - name: "yarn available (DependencyInstallService runs yarn install --frozen-lockfile)"
+    command: "yarn"
+    args: ["--version"]
+    expectedOutput: ["^1\\."]
   - name: "corepack available"
     command: "corepack"
     args: ["--version"]
