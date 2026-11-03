@@ -1,332 +1,157 @@
 schemaVersion: "2.0.0"
 
 # ---------------------------------------------------------------------------
-# Metadata tests — image labels, env vars, entrypoint
+# Contract for the lean Debian 13 agent image. Written before the Dockerfile:
+# the Dockerfile is done when this passes. Behaviour (handshake, Postgres, LSP
+# answers) lives in scripts/smoke.sh and scripts/lsp-probe.mjs.
 # ---------------------------------------------------------------------------
-metadataTest:
-  entrypoint: ["/usr/bin/tini", "--", "/opt/kodizm/entrypoint.sh"]
-  workdir: "/workspace"
-  envVars:
-    - key: "NVM_DIR"
-      value: "/opt/nvm"
-    - key: "PYENV_ROOT"
-      value: "/opt/pyenv"
 
-# ---------------------------------------------------------------------------
-# Command tests — binary existence + correct version output
-# ---------------------------------------------------------------------------
 commandTests:
-  # PHP versions (all 7 must be present)
-  - name: "PHP 8.4 is default"
-    command: "php"
-    args: ["--version"]
-    expectedOutput: ["PHP 8\\.4\\."]
-  - name: "PHP 7.4 binary exists"
-    command: "php7.4"
-    args: ["--version"]
-    expectedOutput: ["PHP 7\\.4\\."]
-  - name: "PHP 8.0 binary exists"
-    command: "php8.0"
-    args: ["--version"]
-    expectedOutput: ["PHP 8\\.0\\."]
-  - name: "PHP 8.1 binary exists"
-    command: "php8.1"
-    args: ["--version"]
-    expectedOutput: ["PHP 8\\.1\\."]
-  - name: "PHP 8.2 binary exists"
-    command: "php8.2"
-    args: ["--version"]
-    expectedOutput: ["PHP 8\\.2\\."]
-  - name: "PHP 8.3 binary exists"
-    command: "php8.3"
-    args: ["--version"]
-    expectedOutput: ["PHP 8\\.3\\."]
-  # PHP extensions (spot check per version)
-  - name: "PHP 8.4 has Redis extension"
-    command: "php8.4"
-    args: ["-m"]
-    expectedOutput: ["redis"]
-  - name: "PHP 8.4 has pgsql extension"
-    command: "php8.4"
-    args: ["-m"]
-    expectedOutput: ["pgsql"]
-  - name: "PHP 8.4 has mbstring extension"
-    command: "php8.4"
-    args: ["-m"]
-    expectedOutput: ["mbstring"]
-  - name: "PHP 8.4 has imagick extension"
-    command: "php8.4"
-    args: ["-m"]
-    expectedOutput: ["imagick"]
-
-  # Composer
-  - name: "Composer installed"
-    command: "composer"
-    args: ["--version"]
-    expectedOutput: ["Composer"]
-
-  # Node versions
-  - name: "Node available via nvm"
-    command: "bash"
-    args: ["-lc", "node --version"]
-    expectedOutput: ["v\\d+\\."]
-  - name: "npm available"
-    command: "bash"
-    args: ["-lc", "npm --version"]
-    expectedOutput: ["\\d+\\."]
-  - name: "pnpm available"
-    command: "bash"
-    args: ["-lc", "pnpm --version"]
-    expectedOutput: ["\\d+\\."]
-  - name: "yarn available"
-    command: "bash"
-    args: ["-lc", "yarn --version"]
-    expectedOutput: ["\\d+\\."]
-
-  # Python
-  - name: "Python 3 available"
-    command: "bash"
-    args: ["-lc", "python3 --version"]
-    expectedOutput: ["Python 3\\."]
-  - name: "pip available"
-    command: "bash"
-    args: ["-lc", "pip3 --version"]
-    expectedOutput: ["pip"]
-
-  # Rust
-  - name: "Rust compiler available"
-    command: "bash"
-    args: ["-lc", "rustc --version"]
-    expectedOutput: ["rustc"]
-  - name: "Cargo available"
-    command: "bash"
-    args: ["-lc", "cargo --version"]
-    expectedOutput: ["cargo"]
-
-  # Go
-  - name: "Go available"
-    command: "bash"
-    args: ["-lc", "go version"]
-    expectedOutput: ["go version"]
-
-  # Ruby
-  - name: "Ruby available"
-    command: "bash"
-    args: ["-lc", "ruby --version"]
-    expectedOutput: ["ruby"]
-
-  # Java
-  - name: "Java available"
-    command: "bash"
-    args: ["-lc", "java --version"]
-    expectedOutput: ["openjdk|java"]
-
-  # PostgreSQL
-  - name: "PostgreSQL 17 server installed"
-    command: "pg_config"
-    args: ["--version"]
-    expectedOutput: ["PostgreSQL 17"]
-  - name: "psql client available"
-    command: "psql"
-    args: ["--version"]
-    expectedOutput: ["psql"]
-
-  # Redis
-  - name: "Redis server installed"
-    command: "redis-server"
-    args: ["--version"]
-    expectedOutput: ["Redis server"]
-  - name: "Redis CLI installed"
-    command: "redis-cli"
-    args: ["--version"]
-    expectedOutput: ["redis-cli"]
-
-  # MySQL client
-  - name: "MySQL client installed"
-    command: "mysql"
-    args: ["--version"]
-    expectedOutput: ["mysql"]
-
-  # SQLite
-  - name: "SQLite installed"
-    command: "sqlite3"
-    args: ["--version"]
-    expectedOutput: ["\\d+\\.\\d+"]
-
-  # Bun
-  - name: "Bun available"
-    command: "bash"
-    args: ["-lc", "bun --version"]
-    expectedOutput: ["\\d+\\."]
-
-  # Flutter / Dart
-  - name: "Flutter available"
-    command: "bash"
-    args: ["-lc", "flutter --version"]
-    expectedOutput: ["Flutter"]
-  - name: "Dart available"
-    command: "bash"
-    args: ["-lc", "dart --version"]
-    expectedOutput: ["Dart"]
-
-  # LSP servers (use --version to verify executability, not just PATH presence)
-  - name: "intelephense (PHP LSP) installed"
-    command: "bash"
-    args: ["-lc", "which intelephense"]
-    expectedOutput: ["intelephense"]
-  - name: "basedpyright (Python LSP) installed"
-    command: "bash"
-    args: ["-lc", "basedpyright-langserver --version"]
-    expectedOutput: ["basedpyright"]
-  - name: "vtsls (TypeScript LSP) installed"
-    command: "bash"
-    args: ["-lc", "vtsls --version"]
-    expectedOutput: ["\\d+\\."]
-  - name: "gopls (Go LSP) installed"
-    command: "bash"
-    args: ["-lc", "gopls version"]
-    expectedOutput: ["golang.org/x/tools/gopls"]
-  - name: "rust-analyzer installed"
-    command: "bash"
-    args: ["-lc", "rust-analyzer --version"]
-    expectedOutput: ["rust-analyzer"]
-  - name: "ruby-lsp (Ruby LSP) installed"
-    command: "bash"
-    args: ["-lc", "ruby-lsp --version"]
-    expectedOutput: ["\\d+\\."]
-  - name: "yaml-language-server installed"
-    command: "bash"
-    args: ["-lc", "yaml-language-server --version"]
-    expectedOutput: ["\\d+\\."]
-  - name: "bash-language-server installed"
-    command: "bash"
-    args: ["-lc", "bash-language-server --version"]
-    expectedOutput: ["\\d+\\."]
-  - name: "marksman (Markdown LSP) installed"
-    command: "which"
-    args: ["marksman"]
-    expectedOutput: ["marksman"]
-  - name: "vue-typescript-plugin installed"
-    command: "bash"
-    args: ["-lc", "ls $(npm root -g)/@vue/typescript-plugin/package.json"]
-    expectedOutput: ["package.json"]
-  - name: "kodizm-lsp marketplace installed"
-    command: "bash"
-    args: ["-lc", "cat /opt/kodizm/defaults/plugins/marketplaces/kodizm-lsp/.claude-plugin/marketplace.json | python3 -c 'import sys,json; print(len(json.load(sys.stdin)[\"plugins\"]))'"]
-    expectedOutput: ["16"]
-  - name: "CLAUDE_CODE_PLUGIN_SEED_DIR set"
-    command: "bash"
-    args: ["-lc", "echo $CLAUDE_CODE_PLUGIN_SEED_DIR"]
-    expectedOutput: ["/opt/kodizm/defaults/plugins"]
-
-  # Dev tools
-  - name: "ripgrep installed"
-    command: "rg"
-    args: ["--version"]
-    expectedOutput: ["ripgrep"]
-  - name: "fd installed"
-    command: "fdfind"
-    args: ["--version"]
-    expectedOutput: ["fd"]
-  - name: "gh CLI installed"
-    command: "gh"
-    args: ["--version"]
-    expectedOutput: ["gh version"]
-  - name: "shellcheck installed"
-    command: "shellcheck"
-    args: ["--version"]
-    expectedOutput: ["ShellCheck"]
-
-  # gosu + tini
-  - name: "gosu installed"
-    command: "gosu"
-    args: ["--version"]
-    expectedOutput: ["\\d+\\."]
-  - name: "tini installed (PID 1 init)"
-    command: "tini"
-    args: ["--version"]
-    expectedOutput: ["tini"]
-
-  # CLI backends
-  - name: "Claude Code CLI available"
-    command: "claude"
-    args: ["--version"]
-    expectedOutput: ["\\d+\\."]
-  - name: "OpenCode CLI available"
-    command: "opencode"
-    args: ["--version"]
-    expectedOutput: ["\\d+\\."]
-  - name: "codex CLI available"
-    command: "codex"
-    args: ["--version"]
-    expectedOutput: ["\\d+\\."]
-
-  # ACP adapters — JSON-RPC v1 bridges the Kodizm control plane spawns
-  # via `docker exec -i`. claude-agent-acp + codex-acp ship as npm
-  # binaries; opencode acp is built into the opencode binary above.
-  - name: "Claude Code ACP adapter available"
-    command: "claude-agent-acp"
-    args: ["--help"]
-    exitCode: 0
-  - name: "Codex ACP adapter available"
-    command: "codex-acp"
-    args: ["--help"]
-    exitCode: 0
-  - name: "opencode ACP subcommand available"
-    command: "opencode"
-    args: ["acp", "--help"]
-    exitCode: 0
-
-  # Security: agent user exists
+  # User
   - name: "agent user exists with UID 1001"
     command: "id"
     args: ["agent"]
     expectedOutput: ["uid=1001"]
 
-# ---------------------------------------------------------------------------
-# File existence tests
-# ---------------------------------------------------------------------------
+  # PHP: both versions installed, 8.5 is the default
+  - name: "php default is 8.5"
+    command: "php"
+    args: ["-v"]
+    expectedOutput: ["PHP 8\\.5\\."]
+  - name: "php8.3 binary exists"
+    command: "php8.3"
+    args: ["-v"]
+    expectedOutput: ["PHP 8\\.3\\."]
+  - name: "php8.5 binary exists"
+    command: "php8.5"
+    args: ["-v"]
+    expectedOutput: ["PHP 8\\.5\\."]
+
+  # Node toolchain
+  - name: "node is 24"
+    command: "node"
+    args: ["--version"]
+    expectedOutput: ["^v24\\."]
+  - name: "pnpm available"
+    command: "pnpm"
+    args: ["--version"]
+    expectedOutput: ["\\d+\\."]
+  - name: "yarn available (DependencyInstallService runs yarn install --frozen-lockfile)"
+    command: "yarn"
+    args: ["--version"]
+    expectedOutput: ["^1\\."]
+  - name: "corepack available"
+    command: "corepack"
+    args: ["--version"]
+    expectedOutput: ["\\d+\\."]
+  - name: "bun available"
+    command: "bun"
+    args: ["--version"]
+    expectedOutput: ["\\d+\\."]
+
+  # Python, Go, Dart, Flutter
+  - name: "python3.13 available"
+    command: "python3.13"
+    args: ["--version"]
+    expectedOutput: ["Python 3\\.13\\."]
+  - name: "uv available"
+    command: "uv"
+    args: ["--version"]
+    expectedOutput: ["uv \\d+\\."]
+  - name: "go available"
+    command: "go"
+    args: ["version"]
+    expectedOutput: ["go version go\\d+\\."]
+  - name: "dart available"
+    command: "dart"
+    args: ["--version"]
+    expectedOutput: ["Dart SDK version"]
+  - name: "flutter available"
+    command: "flutter"
+    args: ["--version"]
+    expectedOutput: ["Flutter \\d+\\."]
+
+  # PostgreSQL client and the in-container server launcher
+  - name: "psql client available"
+    command: "psql"
+    args: ["--version"]
+    expectedOutput: ["psql \\(PostgreSQL\\)"]
+  - name: "kodizm-pg on PATH"
+    command: "sh"
+    args: ["-c", "command -v kodizm-pg"]
+    expectedOutput: ["/kodizm-pg"]
+
+  # Agent CLIs and the ACP bridge
+  - name: "claude on PATH"
+    command: "sh"
+    args: ["-c", "command -v claude"]
+    expectedOutput: ["/claude"]
+  - name: "claude reports a version"
+    command: "claude"
+    args: ["--version"]
+    expectedOutput: ["^\\d+\\.\\d+\\.\\d+"]
+  - name: "opencode on PATH"
+    command: "sh"
+    args: ["-c", "command -v opencode"]
+    expectedOutput: ["/opencode"]
+  - name: "opencode ACP subcommand available"
+    command: "opencode"
+    args: ["acp", "--help"]
+    exitCode: 0
+  - name: "kodizm-acp on PATH"
+    command: "sh"
+    args: ["-c", "command -v kodizm-acp"]
+    expectedOutput: ["/kodizm-acp"]
+
+  # Language servers the baked .lsp.json launches (swift and html are not installed)
+  - name: "intelephense on PATH"
+    command: "sh"
+    args: ["-c", "command -v intelephense"]
+    expectedOutput: ["/intelephense"]
+  - name: "typescript-language-server on PATH"
+    command: "sh"
+    args: ["-c", "command -v typescript-language-server"]
+    expectedOutput: ["/typescript-language-server"]
+  - name: "pyrefly on PATH"
+    command: "sh"
+    args: ["-c", "command -v pyrefly"]
+    expectedOutput: ["/pyrefly"]
+  - name: "gopls on PATH"
+    command: "sh"
+    args: ["-c", "command -v gopls"]
+    expectedOutput: ["/gopls"]
+
 fileExistenceTests:
-  - name: "entrypoint.sh exists and is executable"
-    path: "/opt/kodizm/entrypoint.sh"
-    shouldExist: true
-    permissions: "-rwxr-xr-x"
-  - name: "setup.sh exists and is executable"
-    path: "/opt/kodizm/setup.sh"
-    shouldExist: true
-    permissions: "-rwxr-xr-x"
-  - name: "workspace directory exists"
-    path: "/workspace"
-    shouldExist: true
-  - name: "PG 17 config exists"
-    path: "/etc/postgresql/17/main/pg_hba.conf"
-    shouldExist: true
-  - name: "Redis config exists"
-    path: "/etc/redis/redis.conf"
-    shouldExist: true
-  - name: "Claude Code binary exists"
+  - name: "claude binary where the ACP bridge looks for it"
     path: "/usr/local/bin/claude"
     shouldExist: true
-  - name: "OpenCode binary exists"
-    path: "/usr/local/bin/opencode"
+  - name: "ac-lsp plugin manifest"
+    path: "/opt/kodizm/plugins/ac-lsp/.lsp.json"
     shouldExist: true
-  - name: "Claude Code ACP adapter symlink exists"
-    path: "/usr/local/bin/claude-agent-acp"
+  - name: "ac-lsp proxy"
+    path: "/opt/kodizm/plugins/ac-lsp/bin/lsp-proxy.js"
     shouldExist: true
-  - name: "Codex ACP adapter symlink exists"
-    path: "/usr/local/bin/codex-acp"
+  - name: "opencode LSP config"
+    path: "/opt/kodizm/opencode.lsp.json"
     shouldExist: true
-  - name: "codex CLI symlink exists"
-    path: "/usr/local/bin/codex"
+  - name: "versions manifest"
+    path: "/opt/kodizm/versions.json"
     shouldExist: true
 
-# ---------------------------------------------------------------------------
-# File content tests
-# ---------------------------------------------------------------------------
 fileContentTests:
-  - name: "PG trust auth configured"
-    path: "/etc/postgresql/17/main/pg_hba.conf"
-    expectedContents: ["local all all trust"]
-  - name: "Redis bound to localhost"
-    path: "/etc/redis/redis.conf"
-    expectedContents: ["bind 127.0.0.1"]
+  # scripts/smoke.sh reads exactly these keys.
+  - name: "versions.json pins claude"
+    path: "/opt/kodizm/versions.json"
+    expectedContents: ["\"claude\"\\s*:\\s*\"\\d+\\.\\d+\\.\\d+"]
+  - name: "versions.json pins opencode"
+    path: "/opt/kodizm/versions.json"
+    expectedContents: ["\"opencode\"\\s*:\\s*\"\\d+\\.\\d+\\.\\d+"]
+  - name: "versions.json pins kodizm_acp"
+    path: "/opt/kodizm/versions.json"
+    expectedContents: ["\"kodizm_acp\"\\s*:\\s*\"\\d+\\.\\d+\\.\\d+"]
+  - name: "versions.json records php"
+    path: "/opt/kodizm/versions.json"
+    expectedContents: ["\"php\"\\s*:\\s*\"\\d+\\."]
+  - name: "versions.json records node"
+    path: "/opt/kodizm/versions.json"
+    expectedContents: ["\"node\"\\s*:\\s*\"\\d+\""]

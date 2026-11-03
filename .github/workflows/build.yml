@@ -1,32 +1,43 @@
 name: Build and Push Docker Image
 
+# No schedule on purpose: floating tags rebuilt weekly produced an image whose layers all changed.
+# Rebuilds happen on merged Renovate PRs and other pushes to main.
 on:
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
-  schedule:
-    - cron: '0 4 * * 1'
+  workflow_dispatch:
 
-# Coalesce in-flight runs on rapid consecutive pushes to main so the
-# 21-minute build queue never piles up. The latest commit cancels any
-# older run on the same branch; the scheduled weekly run gets its own
-# group key so a Monday cron does not cancel a Friday push and vice
-# versa.
+# A newer PR push cancels the older build; a main run is never cancelled, so a promotion cannot be
+# cut off between the candidate push and the `:latest` retag.
 concurrency:
-  group: build-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
-  cancel-in-progress: true
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
   packages: write
 
+env:
+  REPOSITORY: ghcr.io/anilcancakir/kodizm-ai-docker
+  # Pinned release binary; bump the version and the checksum together.
+  CONTAINER_STRUCTURE_TEST_VERSION: v1.22.1
+  CONTAINER_STRUCTURE_TEST_SHA256: fa35e89512a8978585f76cf41397956d2e3a30c62c2ad3fb857b1597074d14ca
+
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    env:
+      # Only a run on main publishes. Pull requests (forks included) and dispatches from other
+      # refs build into the local daemon and never see the registry write token or API key.
+      PUBLISH: ${{ github.ref == 'refs/heads/main' }}
+      IMAGE: ${{ github.ref == 'refs/heads/main' && format('ghcr.io/anilcancakir/kodizm-ai-docker:cand-{0}', github.sha) || 'kodizm-agent:test' }}
 
     steps:
       - name: Free disk space
-        uses: jlumbroso/free-disk-space@main
+        uses: jlumbroso/free-disk-space@v2.0.0
         with:
           tool-cache: true
           android: true
@@ -43,43 +54,131 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GitHub Container Registry
+        if: env.PUBLISH == 'true'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # OpenCode ships near daily and its download URL is pinned by tag in
-      # the Dockerfile, so the newest tag is resolved here and handed to
-      # the build as an arg. This keeps the version inside the layer cache
-      # key: the previous `releases/latest` URL lived inside a RUN, which
-      # Docker cannot see into, so the layer stayed cached and the binary
-      # silently froze at whatever version it was first built with.
-      - name: Resolve latest OpenCode release
-        id: opencode
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install container-structure-test
         run: |
           set -euo pipefail
-          version="$(gh api repos/anomalyco/opencode/releases/latest --jq '.tag_name' | sed 's/^v//')"
-          if [ -z "${version}" ] || [ "${version}" = "null" ]; then
-            echo "Could not resolve an OpenCode release tag." >&2
-            exit 1
-          fi
-          echo "Resolved OpenCode version: ${version}"
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          curl -fsSLo /tmp/container-structure-test \
+            "https://github.com/GoogleContainerTools/container-structure-test/releases/download/${CONTAINER_STRUCTURE_TEST_VERSION}/container-structure-test-linux-amd64"
+          echo "${CONTAINER_STRUCTURE_TEST_SHA256}  /tmp/container-structure-test" | sha256sum -c -
+          sudo install -m 0755 /tmp/container-structure-test /usr/local/bin/container-structure-test
 
-      - name: Build and push
+      # The build fails until @kodizm/acp@0.7.0 is published to npm (the Dockerfile pins it).
+      - name: Build (no push)
+        if: env.PUBLISH != 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: true
-          build-args: |
-            OPENCODE_VERSION=${{ steps.opencode.outputs.version }}
-          tags: |
-            ghcr.io/anilcancakir/kodizm-ai-docker:latest
-            ghcr.io/anilcancakir/kodizm-ai-docker:sha-${{ github.sha }}
-          cache-from: type=registry,ref=ghcr.io/anilcancakir/kodizm-ai-docker:buildcache
-          cache-to: type=registry,ref=ghcr.io/anilcancakir/kodizm-ai-docker:buildcache,mode=max
-          secrets: |
-            github_token=${{ secrets.GITHUB_TOKEN }}
+          load: true
+          provenance: false
+          tags: ${{ env.IMAGE }}
+          cache-from: type=registry,ref=${{ env.REPOSITORY }}:buildcache
+
+      # zstd layers shrink the pull. If GHCR or a Docker host rejects them, set compression=gzip in
+      # both `outputs` and `cache-to` (and drop oci-mediatypes if the registry still refuses).
+      - name: Build and push candidate
+        if: env.PUBLISH == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          provenance: false
+          outputs: type=image,name=${{ env.IMAGE }},push=true,compression=zstd,compression-level=6,force-compression=true,oci-mediatypes=true
+          cache-from: type=registry,ref=${{ env.REPOSITORY }}:buildcache
+          cache-to: type=registry,ref=${{ env.REPOSITORY }}:buildcache,mode=max,compression=zstd,oci-mediatypes=true
+
+      # The gates run against the registry copy, which is exactly what promotion retags.
+      - name: Pull candidate
+        if: env.PUBLISH == 'true'
+        run: docker pull "${IMAGE}"
+
+      # The unpacked size and the biggest layers show in every run's summary.
+      - name: Image size
+        run: |
+          set -euo pipefail
+          {
+            echo "### Image size"
+            echo "unpacked: $(docker image inspect "${IMAGE}" --format '{{.Size}}' | numfmt --to=iec)"
+            echo '```'
+            docker history --format '{{.Size}}  {{.CreatedBy}}' "${IMAGE}" | sort -h -r | head -8 | cut -c1-160
+            echo '```'
+          } | tee -a "${GITHUB_STEP_SUMMARY}"
+
+      # What a Docker host pulls is the compressed layers of the registry manifest. Its pull guard asks
+      # for five times the missing bytes, so the budgets below keep the image pullable.
+      - name: Compressed size (registry)
+        if: env.PUBLISH == 'true'
+        env:
+          MAX_COMPRESSED_BYTES: '6000000000'
+          MAX_LAYER_BYTES: '1610612736'
+        run: |
+          set -euo pipefail
+          manifest="$(docker buildx imagetools inspect "${IMAGE}" --raw)"
+          total="$(jq '[.layers[].size] | add' <<<"${manifest}")"
+          largest="$(jq '[.layers[].size] | max' <<<"${manifest}")"
+          {
+            echo "### Compressed size"
+            echo "layers: $(jq '.layers | length' <<<"${manifest}"), total $(numfmt --to=iec "${total}"), largest $(numfmt --to=iec "${largest}")"
+          } | tee -a "${GITHUB_STEP_SUMMARY}"
+          [ "${total}" -le "${MAX_COMPRESSED_BYTES}" ] || { echo "compressed size ${total} exceeds ${MAX_COMPRESSED_BYTES}" >&2; exit 1; }
+          [ "${largest}" -le "${MAX_LAYER_BYTES}" ] || { echo "largest layer ${largest} exceeds ${MAX_LAYER_BYTES}" >&2; exit 1; }
+
+      - name: Structure test
+        run: container-structure-test test --image "${IMAGE}" --config tests/structure-test.yaml
+
+      - name: Smoke test
+        run: docker run --rm -v "${PWD}/scripts:/smoke:ro" "${IMAGE}" bash /smoke/smoke.sh
+
+      - name: LSP probe
+        run: |
+          docker run --rm \
+            -v "${PWD}/scripts:/smoke:ro" \
+            -v "${PWD}/tests/fixtures:/fixtures:ro" \
+            -e LSP_FIXTURES=/fixtures \
+            "${IMAGE}" node /smoke/lsp-probe.mjs
+
+      - name: Real call
+        if: env.PUBLISH == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Both optional: the Kodizm gateway URL and a model it serves (repository variables).
+          ANTHROPIC_BASE_URL: ${{ vars.ANTHROPIC_BASE_URL }}
+          SMOKE_MODEL: ${{ vars.SMOKE_MODEL }}
+        run: |
+          docker run --rm \
+            -e ANTHROPIC_API_KEY -e ANTHROPIC_BASE_URL -e SMOKE_MODEL \
+            -v "${PWD}/scripts:/smoke:ro" \
+            "${IMAGE}" bash /smoke/real-call-smoke.sh
+
+  promote:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # A registry-side retag of the tested manifest: nothing is rebuilt or re-pushed layer by layer.
+      - name: Promote candidate
+        run: |
+          set -euo pipefail
+          dated="$(date -u +%Y%m%d)-${GITHUB_SHA::7}"
+          docker buildx imagetools create \
+            --tag "${REPOSITORY}:latest" \
+            --tag "${REPOSITORY}:${dated}" \
+            "${REPOSITORY}:cand-${GITHUB_SHA}"
+          docker buildx imagetools inspect "${REPOSITORY}:${dated}"

@@ -1,0 +1,241 @@
+{
+    "intelephense": {
+        "command": "node",
+        "args": [
+            "${CLAUDE_PLUGIN_ROOT}/bin/lsp-proxy.js",
+            "--watch-root",
+            "--git-root",
+            "--ext",
+            ".php",
+            "--ext",
+            ".phtml",
+            "--max-severity",
+            "2",
+            "--idle",
+            "600000",
+            "--profile",
+            "php",
+            "--busy",
+            "indexingStarted,indexingEnded",
+            "--",
+            "intelephense",
+            "--stdio"
+        ],
+        "extensionToLanguage": {
+            ".php": "php",
+            ".phtml": "php"
+        },
+        "startupTimeout": 30000,
+        "settings": {
+            "intelephense": {
+                "files": {
+                    "exclude": [
+                        "**/.git/**",
+                        "**/.svn/**",
+                        "**/.hg/**",
+                        "**/CVS/**",
+                        "**/.DS_Store/**",
+                        "**/node_modules/**",
+                        "**/bower_components/**",
+                        "**/vendor/**/{Tests,tests}/**",
+                        "**/.history/**",
+                        "**/vendor/**/vendor/**",
+                        "**/.claude/worktrees/**",
+                        "**/.ac/worktrees/**",
+                        "**/.worktrees/**",
+                        "**/build/**"
+                    ]
+                },
+                "diagnostics": {
+                    "unusedSymbols": false
+                }
+            }
+        }
+    },
+    "dart": {
+        "command": "node",
+        "args": [
+            "${CLAUDE_PLUGIN_ROOT}/bin/lsp-proxy.js",
+            "--max-severity",
+            "2",
+            "--idle",
+            "600000",
+            "--",
+            "dart",
+            "language-server",
+            "--protocol=lsp"
+        ],
+        "extensionToLanguage": {
+            ".dart": "dart"
+        },
+        "startupTimeout": 60000
+    },
+    "typescript": {
+        "command": "node",
+        "args": [
+            "${CLAUDE_PLUGIN_ROOT}/bin/lsp-proxy.js",
+            "--max-severity",
+            "2",
+            "--idle",
+            "600000",
+            "--profile",
+            "typescript",
+            "--",
+            "typescript-language-server",
+            "--stdio"
+        ],
+        "extensionToLanguage": {
+            ".ts": "typescript",
+            ".tsx": "typescriptreact",
+            ".mts": "typescript",
+            ".cts": "typescript",
+            ".js": "javascript",
+            ".jsx": "javascriptreact",
+            ".mjs": "javascript",
+            ".cjs": "javascript"
+        },
+        "initializationOptions": {
+            "maxTsServerMemory": 1536,
+            "disableAutomaticTypingAcquisition": true,
+            "tsserver": {
+                "useSyntaxServer": "never"
+            },
+            "preferences": {
+                "disableSuggestions": true
+            }
+        },
+        "startupTimeout": 30000
+    },
+    "python": {
+        "command": "node",
+        "args": [
+            "${CLAUDE_PLUGIN_ROOT}/bin/lsp-proxy.js",
+            "--max-severity",
+            "2",
+            "--idle",
+            "600000",
+            "--",
+            "pyrefly",
+            "lsp"
+        ],
+        "extensionToLanguage": {
+            ".py": "python",
+            ".pyi": "python"
+        },
+        "initializationOptions": {
+            "analysis": {
+                "diagnosticMode": "openFilesOnly"
+            },
+            "pyrefly": {
+                "typeCheckingMode": "default",
+                "disabledLanguageServices": {
+                    "inlayHint": true,
+                    "completion": true,
+                    "semanticTokens": true,
+                    "codeLens": true,
+                    "signatureHelp": true,
+                    "documentHighlight": true,
+                    "codeAction": true
+                }
+            }
+        },
+        "startupTimeout": 30000
+    },
+    "go": {
+        "command": "node",
+        "args": [
+            "${CLAUDE_PLUGIN_ROOT}/bin/lsp-proxy.js",
+            "--max-severity",
+            "2",
+            "--idle",
+            "600000",
+            "--",
+            "gopls"
+        ],
+        "extensionToLanguage": {
+            ".go": "go"
+        },
+        "initializationOptions": {
+            "staticcheck": false,
+            "directoryFilters": [
+                "-**/node_modules",
+                "-**/.claude/worktrees"
+            ],
+            "analyses": {
+                "writestring": false,
+                "mapsloop": false,
+                "any": false,
+                "atomictypes": false,
+                "embedlit": false,
+                "errorsastype": false,
+                "fmtappendf": false,
+                "forvar": false,
+                "importcomment": false,
+                "infertypeargs": false,
+                "maprange": false,
+                "minmax": false,
+                "newexpr": false,
+                "omitzero": false,
+                "plusbuild": false,
+                "rangeint": false,
+                "reflecttypeassert": false,
+                "reflecttypefor": false,
+                "simplifycompositelit": false,
+                "simplifyrange": false,
+                "simplifyslice": false,
+                "slicesbackward": false,
+                "slicesclip": false,
+                "slicescontains": false,
+                "slicessort": false,
+                "stditerators": false,
+                "stringscut": false,
+                "stringscutprefix": false,
+                "stringsbuilder": false,
+                "stringsseq": false,
+                "testingcontext": false,
+                "unsafefuncs": false,
+                "unusedfunc": false,
+                "unusedparams": false,
+                "waitgroupgo": false
+            }
+        },
+        "startupTimeout": 30000
+    },
+    "swift": {
+        "command": "node",
+        "args": [
+            "${CLAUDE_PLUGIN_ROOT}/bin/lsp-proxy.js",
+            "--max-severity",
+            "2",
+            "--idle",
+            "600000",
+            "--profile",
+            "swift",
+            "--",
+            "sourcekit-lsp"
+        ],
+        "extensionToLanguage": {
+            ".swift": "swift"
+        },
+        "startupTimeout": 60000
+    },
+    "html": {
+        "command": "node",
+        "args": [
+            "${CLAUDE_PLUGIN_ROOT}/bin/lsp-proxy.js",
+            "--max-severity",
+            "2",
+            "--idle",
+            "600000",
+            "--",
+            "superhtml",
+            "lsp",
+            "--syntax-only"
+        ],
+        "extensionToLanguage": {
+            ".html": "html",
+            ".htm": "html"
+        },
+        "startupTimeout": 15000
+    }
+}

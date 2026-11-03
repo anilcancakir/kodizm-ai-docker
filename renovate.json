@@ -1,0 +1,53 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "schedule": ["before 6am on monday"],
+  "timezone": "Europe/Istanbul",
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Pinned tool versions: a `# renovate:` comment directly above `ARG <NAME>_VERSION=<value>`. FROM is left to the built-in dockerfile manager.",
+      "managerFilePatterns": ["/(^|/)Dockerfile$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>[a-z-]+) depName=(?<depName>\\S+)( extractVersion=(?<extractVersion>\\S+))?( versioning=(?<versioning>\\S+))?\\s+ARG [A-Z0-9_]+_VERSION=(?<currentValue>\\S+)",
+        "# renovate: datasource=(?<datasource>git-refs) depName=(?<depName>\\S+) currentValue=(?<currentValue>\\S+)\\s+ARG [A-Z0-9_]+_VERSION=(?<currentDigest>[a-f0-9]{40})"
+      ]
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Automerge relies on a required status check on the build job; the owner enables branch protection later. platformAutomerge stays off until then, so Renovate itself waits for the PR's checks instead of GitHub merging an unprotected branch at once.",
+      "matchPackageNames": ["*"],
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": false
+    },
+    {
+      "description": "Keep the Debian FROM and the Dockerfile syntax frontend pinned by digest.",
+      "matchDatasources": ["docker"],
+      "pinDigests": true
+    },
+    {
+      "description": "Wait three days after publication before taking a registry release that has a native release timestamp.",
+      "matchDatasources": ["npm", "pypi"],
+      "minimumReleaseAge": "3 days"
+    },
+    {
+      "description": "opencode 2.x is not adopted yet.",
+      "matchDatasources": ["npm"],
+      "matchPackageNames": ["opencode-ai"],
+      "allowedVersions": "<2.0.0"
+    },
+    {
+      "description": "Stay on the Node 24 LTS line.",
+      "matchPackageNames": ["nodejs/node"],
+      "allowedVersions": "<25"
+    },
+    {
+      "description": "Stay on the TypeScript 6 line; the language server resolves the global typescript as its sibling.",
+      "matchDatasources": ["npm"],
+      "matchPackageNames": ["typescript", "typescript-language-server"],
+      "allowedVersions": "<7"
+    }
+  ]
+}
