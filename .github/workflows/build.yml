@@ -97,6 +97,37 @@ jobs:
         if: env.PUBLISH == 'true'
         run: docker pull "${IMAGE}"
 
+      # The unpacked size and the biggest layers show in every run's summary.
+      - name: Image size
+        run: |
+          set -euo pipefail
+          {
+            echo "### Image size"
+            echo "unpacked: $(docker image inspect "${IMAGE}" --format '{{.Size}}' | numfmt --to=iec)"
+            echo '```'
+            docker history --format '{{.Size}}  {{.CreatedBy}}' "${IMAGE}" | sort -h -r | head -8 | cut -c1-160
+            echo '```'
+          } | tee -a "${GITHUB_STEP_SUMMARY}"
+
+      # What a Docker host pulls is the compressed layers of the registry manifest. Its pull guard asks
+      # for five times the missing bytes, so the budgets below keep the image pullable.
+      - name: Compressed size (registry)
+        if: env.PUBLISH == 'true'
+        env:
+          MAX_COMPRESSED_BYTES: '6000000000'
+          MAX_LAYER_BYTES: '1610612736'
+        run: |
+          set -euo pipefail
+          manifest="$(docker buildx imagetools inspect "${IMAGE}" --raw)"
+          total="$(jq '[.layers[].size] | add' <<<"${manifest}")"
+          largest="$(jq '[.layers[].size] | max' <<<"${manifest}")"
+          {
+            echo "### Compressed size"
+            echo "layers: $(jq '.layers | length' <<<"${manifest}"), total $(numfmt --to=iec "${total}"), largest $(numfmt --to=iec "${largest}")"
+          } | tee -a "${GITHUB_STEP_SUMMARY}"
+          [ "${total}" -le "${MAX_COMPRESSED_BYTES}" ] || { echo "compressed size ${total} exceeds ${MAX_COMPRESSED_BYTES}" >&2; exit 1; }
+          [ "${largest}" -le "${MAX_LAYER_BYTES}" ] || { echo "largest layer ${largest} exceeds ${MAX_LAYER_BYTES}" >&2; exit 1; }
+
       - name: Structure test
         run: container-structure-test test --image "${IMAGE}" --config tests/structure-test.yaml
 
