@@ -1,22 +1,27 @@
-.PHONY: docker-lint docker-build docker-test-static docker-test-runtime docker-test docker-all
+.PHONY: docker-lint docker-build docker-test-static docker-test-smoke docker-test-lsp docker-test docker-all
 
 IMAGE_TAG ?= kodizm-agent:dev
+SCRIPTS := $(CURDIR)/scripts
+FIXTURES := $(CURDIR)/tests/fixtures
 
 docker-lint:
-	docker run --rm -i hadolint/hadolint < docker/Dockerfile
+	docker run --rm -i hadolint/hadolint < Dockerfile
 
 docker-build:
-	docker build -t $(IMAGE_TAG) docker/
+	docker build -t $(IMAGE_TAG) .
 
 docker-test-static: docker-build
 	container-structure-test test \
 		--image $(IMAGE_TAG) \
-		--config docker/tests/structure-test.yaml
+		--config tests/structure-test.yaml
 
-docker-test-runtime: docker-build
-	cd docker/tests && GOSS_WAIT_OPTS="-r 30s -s 1s" \
-		dgoss run $(IMAGE_TAG) bash -c "sleep 120"
+docker-test-smoke: docker-build
+	docker run --rm -v $(SCRIPTS):/smoke:ro $(IMAGE_TAG) bash /smoke/smoke.sh
 
-docker-test: docker-test-static docker-test-runtime
+docker-test-lsp: docker-build
+	docker run --rm -v $(SCRIPTS):/smoke:ro -v $(FIXTURES):/fixtures:ro \
+		-e LSP_FIXTURES=/fixtures $(IMAGE_TAG) node /smoke/lsp-probe.mjs
+
+docker-test: docker-test-static docker-test-smoke docker-test-lsp
 
 docker-all: docker-lint docker-build docker-test
