@@ -18,6 +18,18 @@ fail() {
   exit 1
 }
 
+# Same rule as supportsPasteBufferS in kodizm-acp's src/live/pane.ts: `paste-buffer -S`
+# exists from tmux 3.7 on, and the Debian 13 tmux (3.5a) refuses it as an unknown flag.
+tmux_has_paste_s() {
+  local version
+  version="$(tmux -V)"
+  version="${version#tmux }"
+  version="${version#next-}"
+  [[ "${version}" =~ ^([0-9]+)\.([0-9]+)[a-z]?$ ]] || return 1
+  local major="${BASH_REMATCH[1]}" minor="${BASH_REMATCH[2]}"
+  ((major > 3 || (major == 3 && minor >= 7)))
+}
+
 pinned_version() {
   node -e '
     const value = require(process.argv[1])[process.argv[2]]
@@ -78,5 +90,38 @@ for php_bin in php8.3 php8.5; do
   done
   echo "smoke: ${php_bin} has all ${#PHP_EXTENSIONS[@]} extensions"
 done
+
+# 6. Live sessions drive the CLI through a tmux server on its own socket, so a detached
+#    session must start and die cleanly there without touching the default socket.
+tmux -L kodizm-live new-session -d -s smoke 'sleep 60' || fail "tmux could not start a detached session"
+tmux -L kodizm-live has-session -t smoke || fail "tmux session did not stay up on the kodizm-live socket"
+echo "smoke: tmux runs a detached session on -L kodizm-live"
+
+#    A prompt reaches the pane the way pane.ts sends it: load-buffer from stdin, then
+#    paste-buffer with the flags this tmux accepts. A flag the image's tmux refuses
+#    would fail every Live prompt, so a multi-line text has to arrive byte for byte.
+paste_out=/tmp/kodizm-smoke-paste.out
+paste_expected=/tmp/kodizm-smoke-paste.expected
+paste_text=$'first line\nsecond line: çğıöşü 漢字\n  indented !not-bash /not-slash\n'
+paste_flags=(-p -d -r)
+tmux_has_paste_s && paste_flags+=(-S)
+rm -f "${paste_out}"
+printf '%s' "${paste_text}" >"${paste_expected}"
+tmux -L kodizm-live new-session -d -s smoke-paste "cat > ${paste_out}" \
+  || fail "tmux could not start the paste session"
+printf '%s' "${paste_text}" | tmux -L kodizm-live load-buffer -b smoke - \
+  || fail "tmux load-buffer refused the paste text"
+tmux -L kodizm-live paste-buffer "${paste_flags[@]}" -b smoke -t '=smoke-paste:' \
+  || fail "tmux paste-buffer ${paste_flags[*]} failed on $(tmux -V)"
+for _ in {1..50}; do
+  cmp -s "${paste_out}" "${paste_expected}" && break
+  sleep 0.2
+done
+cmp -s "${paste_out}" "${paste_expected}" \
+  || fail "the pasted text did not arrive byte for byte with paste-buffer ${paste_flags[*]} on $(tmux -V)"
+rm -f "${paste_out}" "${paste_expected}"
+echo "smoke: $(tmux -V) pastes a multi-line text byte for byte (paste-buffer ${paste_flags[*]})"
+
+tmux -L kodizm-live kill-server || fail "tmux could not kill the kodizm-live server"
 
 echo "smoke: ok"
