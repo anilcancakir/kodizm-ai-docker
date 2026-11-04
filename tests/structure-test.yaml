@@ -108,6 +108,10 @@ commandTests:
     command: "sh"
     args: ["-c", "command -v kodizm-acp"]
     expectedOutput: ["/kodizm-acp"]
+  - name: "kodizm-acp carries the tmuxd Live session runtime"
+    command: "kodizm-acp"
+    args: ["tmuxd", "--help"]
+    expectedOutput: ["ctl"]
 
   # Language servers the baked .lsp.json launches (swift and html are not installed)
   - name: "intelephense on PATH"
