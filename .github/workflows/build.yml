@@ -50,6 +50,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # The smoke script's judge functions are unit-tested on the runner, before any image is built.
+      - name: Set up Node for the smoke self-test
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Smoke script self-test
+        run: node --test tests/*.test.mjs
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -154,6 +163,35 @@ jobs:
             -e ANTHROPIC_API_KEY -e ANTHROPIC_BASE_URL -e SMOKE_MODEL \
             -v "${PWD}/scripts:/smoke:ro" \
             "${IMAGE}" bash /smoke/real-call-smoke.sh
+
+      # A CLI bump that breaks a GATE check fails here, before promote. OBSERVE checks never fail the
+      # step. An empty CLAUDE_CODE_OAUTH_TOKEN makes the oauth checks SKIP.
+      - name: Real CLI smoke
+        if: env.PUBLISH == 'true'
+        timeout-minutes: 45
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ANTHROPIC_BASE_URL: ${{ vars.ANTHROPIC_BASE_URL }}
+          SMOKE_MODEL: ${{ vars.SMOKE_MODEL }}
+        run: |
+          set -uo pipefail
+          rc=0
+          docker run --rm \
+            -e ANTHROPIC_API_KEY -e CLAUDE_CODE_OAUTH_TOKEN -e ANTHROPIC_BASE_URL -e SMOKE_MODEL \
+            -v "${PWD}/scripts:/smoke:ro" \
+            "${IMAGE}" node /smoke/real-cli-smoke.mjs 2>&1 | tee /tmp/real-cli-smoke.log || rc=$?
+          {
+            echo "### Real CLI smoke"
+            echo '```'
+            if grep -q '^=== SMOKE REPORT ===$' /tmp/real-cli-smoke.log; then
+              sed -n '/^=== SMOKE REPORT ===$/,/^=== END SMOKE REPORT ===$/p' /tmp/real-cli-smoke.log
+            else
+              echo "the smoke printed no report (exit code ${rc})"
+            fi
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
+          exit "${rc}"
 
   promote:
     needs: build
