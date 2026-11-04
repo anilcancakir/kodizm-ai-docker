@@ -60,6 +60,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       python3-venv \
       ripgrep \
       tini \
+      tmux \
       unzip \
       xz-utils
 

@@ -79,4 +79,11 @@ for php_bin in php8.3 php8.5; do
   echo "smoke: ${php_bin} has all ${#PHP_EXTENSIONS[@]} extensions"
 done
 
+# 6. Live sessions drive the CLI through a tmux server on its own socket, so a detached
+#    session must start and die cleanly there without touching the default socket.
+tmux -L kodizm-live new-session -d -s smoke 'sleep 60' || fail "tmux could not start a detached session"
+tmux -L kodizm-live has-session -t smoke || fail "tmux session did not stay up on the kodizm-live socket"
+tmux -L kodizm-live kill-server || fail "tmux could not kill the kodizm-live server"
+echo "smoke: tmux runs a detached session on -L kodizm-live"
+
 echo "smoke: ok"

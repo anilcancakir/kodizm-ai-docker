@@ -81,6 +81,12 @@ commandTests:
     args: ["-c", "command -v kodizm-pg"]
     expectedOutput: ["/kodizm-pg"]
 
+  # Live sessions run the interactive CLI inside a tmux pane
+  - name: "tmux 3 available"
+    command: "tmux"
+    args: ["-V"]
+    expectedOutput: ["tmux 3\\."]
+
   # Agent CLIs and the ACP bridge
   - name: "claude on PATH"
     command: "sh"
