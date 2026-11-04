@@ -112,6 +112,20 @@ commandTests:
     command: "kodizm-acp"
     args: ["tmuxd", "--help"]
     expectedOutput: ["ctl"]
+  - name: "kodizm-acp tmuxd lists the 0.9.0 start flags"
+    command: "kodizm-acp"
+    args: ["tmuxd", "--help"]
+    expectedOutput:
+      - "--permission-mode"
+      - "--mcp-config"
+      - "--one-shot"
+      - "KODIZM_TMUXD_IDLE_TIMEOUT_SECONDS"
+  # No daemon is running, so ctl answers for itself: pane_not_running (exit 4) stamped with its own build version.
+  - name: "kodizm-acp tmuxd ctl status stamps daemon_version"
+    command: "kodizm-acp"
+    args: ["tmuxd", "ctl", "status", "--pane", "structure-probe"]
+    exitCode: 4
+    expectedOutput: ["\"daemon_version\":\"(0\\.(9|[1-9]\\d+)|[1-9]\\d*)\\."]
 
   # Language servers the baked .lsp.json launches (swift and html are not installed)
   - name: "intelephense on PATH"
@@ -159,6 +173,9 @@ fileContentTests:
   - name: "versions.json pins kodizm_acp"
     path: "/opt/kodizm/versions.json"
     expectedContents: ["\"kodizm_acp\"\\s*:\\s*\"\\d+\\.\\d+\\.\\d+"]
+  - name: "versions.json pins kodizm_acp 0.9 or newer"
+    path: "/opt/kodizm/versions.json"
+    expectedContents: ["\"kodizm_acp\"\\s*:\\s*\"(0\\.(9|[1-9]\\d+)|[1-9]\\d*)\\."]
   - name: "versions.json records php"
     path: "/opt/kodizm/versions.json"
     expectedContents: ["\"php\"\\s*:\\s*\"\\d+\\."]
