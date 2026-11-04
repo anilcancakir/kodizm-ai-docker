@@ -69,7 +69,7 @@ jobs:
           echo "${CONTAINER_STRUCTURE_TEST_SHA256}  /tmp/container-structure-test" | sha256sum -c -
           sudo install -m 0755 /tmp/container-structure-test /usr/local/bin/container-structure-test
 
-      # The build fails until @kodizm/acp@0.7.0 is published to npm (the Dockerfile pins it).
+      # The build fails until the @kodizm/acp version the Dockerfile pins is published to npm.
       - name: Build (no push)
         if: env.PUBLISH != 'true'
         uses: docker/build-push-action@v6
