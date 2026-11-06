@@ -112,12 +112,13 @@ commandTests:
     command: "kodizm-acp"
     args: ["tmuxd", "--help"]
     expectedOutput: ["ctl"]
-  - name: "kodizm-acp tmuxd lists the 0.9.0 start flags"
+  - name: "kodizm-acp tmuxd lists the 0.9.1 start flags"
     command: "kodizm-acp"
     args: ["tmuxd", "--help"]
     expectedOutput:
       - "--permission-mode"
       - "--mcp-config"
+      - "--features"
       - "--one-shot"
       - "KODIZM_TMUXD_IDLE_TIMEOUT_SECONDS"
   # No daemon is running, so ctl answers for itself: pane_not_running (exit 4) stamped with its own build version.

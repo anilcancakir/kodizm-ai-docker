@@ -46,7 +46,7 @@ import { startApi, startIngest, startMcp } from './lib/stubs.mjs'
 
 const GROUPS = ['contract', 'pane', 'headless', 'usage-limit']
 const OBSERVE_GROUPS = new Set(['usage-limit'])
-const DAEMON_MIN = '0.9.0'
+const DAEMON_MIN = '0.9.1'
 const DEFAULT_MODEL = 'haiku'
 const DEFAULT_BUDGET = '0.50'
 const POLL_MS = 250
@@ -97,6 +97,22 @@ const LIVE_BASE_DENY = [
 const TOOL_POLICY = {
   allow: ['mcp:kodizm/ping_kodizm'],
   deny: ['Read:/proc/**'],
+}
+
+// What the app hands a headless role: its switched-off families and a named built-in set. Every pane of the smoke
+// runs on it, so the MCP call and the Bash deny of the paid turns prove the narrowed surface still works.
+const PANE_FEATURES = {
+  todos: false,
+  subagents: false,
+  backgroundTasks: false,
+  scheduling: false,
+  planMode: false,
+  worktree: false,
+  notebook: false,
+  clientTools: false,
+  autoMemory: false,
+  bundledSkills: false,
+  tools: ['Bash', 'Read'],
 }
 
 // The headless fallback when no pane ran: the rules tmuxd would have written for the same tool policy.
@@ -580,10 +596,12 @@ async function startPane(ctx, { id, auth, deadlineSeconds, baseUrl }) {
     env: handoffPath(ctx, id, 'env'),
     policy: handoffPath(ctx, id, 'tool-policy.json'),
     systemPrompt: handoffPath(ctx, id, 'system-prompt.txt'),
+    features: handoffPath(ctx, id, 'features.json'),
     mcp: handoffPath(ctx, id, 'mcp.json'),
   }
   await secretFile(files.env, envFile(ingest, auth, baseUrl))
   await secretFile(files.policy, JSON.stringify(TOOL_POLICY))
+  await secretFile(files.features, JSON.stringify(PANE_FEATURES))
   await secretFile(files.systemPrompt, `When asked for the project codeword answer exactly ${codeword}.`)
   await secretFile(files.mcp, mcpConfig(mcp, ctx.tokens.a))
 
@@ -597,6 +615,7 @@ async function startPane(ctx, { id, auth, deadlineSeconds, baseUrl }) {
     'mcp-config': files.mcp,
     'tool-policy': files.policy,
     'system-prompt-file': files.systemPrompt,
+    features: files.features,
     'permission-mode': 'dontAsk',
     'one-shot': '0',
     'deadline-seconds': String(deadlineSeconds),
@@ -725,7 +744,7 @@ function judgeHandoff(pane) {
     problems.push('mcp-config was removed while the pane runs')
   }
 
-  return verdictOf(problems, 'env, tool-policy and system-prompt consumed; mcp-config kept')
+  return verdictOf(problems, 'env, tool-policy, system-prompt and features consumed; mcp-config kept')
 }
 
 async function paneGroup(ctx) {

@@ -43,11 +43,11 @@ appendFileSync(join(dir, 'invoked'), JSON.stringify({ bin: process.argv[1], args
 const mode = (name) => existsSync(join(dir, name))
 `
 
-// ctl replies as acp 0.9.0 prints them: status on a missing socket is pane_not_running (exit 4),
+// ctl replies as acp 0.9.1 prints them: status on a missing socket is pane_not_running (exit 4),
 // a start whose flags do not parse is usage_error (exit 2). A `no-version` file drops daemon_version.
 const FAKE_ACP = `${FAKE_PRELUDE}
 const [tmuxd, ctl, verb] = args
-const data = mode('no-version') ? {} : { daemon_version: '0.9.0' }
+const data = mode('no-version') ? {} : { daemon_version: '0.9.1' }
 const reply = (code, exit, extra = {}) => {
   process.stdout.write(JSON.stringify({ ok: false, code, data: { ...data, ...extra } }) + '\\n')
   process.exit(exit)
@@ -154,7 +154,7 @@ function invocations(dir) {
 
 function versionsFile(dir) {
   const path = join(dir, 'versions.json')
-  writeFileSync(path, JSON.stringify({ claude: '2.1.318', kodizm_acp: '0.9.0' }))
+  writeFileSync(path, JSON.stringify({ claude: '2.1.318', kodizm_acp: '0.9.1' }))
 
   return path
 }
@@ -223,7 +223,7 @@ describe('real-cli-smoke', () => {
     assert.deepEqual(readdirSync(temp), [])
   })
 
-  it('passes the contract group against a ctl that answers as acp 0.9.0 does', async () => {
+  it('passes the contract group against a ctl that answers as acp 0.9.1 does', async () => {
     const dir = makeDir()
 
     const { code, stdout } = await runSmoke(contractEnv(dir))
@@ -237,7 +237,7 @@ describe('real-cli-smoke', () => {
     assert.match(block, /^GATE PASS contract\.usage-error-mode /m)
     assert.doesNotMatch(block, / FAIL /)
     assert.match(block, /^claude: 2\.1\.318$/m)
-    assert.match(block, /^daemon_version: 0\.9\.0$/m)
+    assert.match(block, /^daemon_version: 0\.9\.1$/m)
 
     const verbs = invocations(dir)
       .filter((call) => call.args[0] === 'tmuxd')
