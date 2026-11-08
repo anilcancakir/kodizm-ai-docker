@@ -1,7 +1,8 @@
 name: Build and Push Docker Image
 
 # No schedule on purpose: floating tags rebuilt weekly produced an image whose layers all changed.
-# Rebuilds happen on merged Renovate PRs and other pushes to main.
+# Rebuilds happen on merged Renovate PRs and other pushes to main, and when acp-follow.yml moves the
+# @kodizm/acp pin to a new release (a version check, not a rebuild on a clock).
 on:
   pull_request:
     branches: [main]
