@@ -1,0 +1,131 @@
+name: Follow acp release
+
+# Keeps `ARG KODIZM_ACP_VERSION` on the newest @kodizm/acp release that the stable bump made. This is
+# how a new Claude Code CLI reaches the image: the Dockerfile installs the CLI that the bridge's
+# `config.claudeAgentSdk` names.
+#
+# build.yml has no schedule on purpose (floating tags rebuilt on a clock changed every layer). This
+# workflow is a version check, not a rebuild: it commits only when a newer bot release exists, then
+# starts build.yml on main and waits for it, so a failed build turns this run red. `:latest` moves
+# only when every gate of that build passes. A commit pushed with the default GITHUB_TOKEN starts no
+# workflow, hence the explicit dispatch.
+#
+# A release a person published by hand is not followed: it changes the bridge and needs Laravel deployed
+# first, so its pin moves by hand. The pin never moves backwards. A failed build is not retried on the
+# next day (the pin is then current): re-run build.yml on main once the cause is fixed.
+on:
+  schedule:
+    - cron: '17 8 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: acp-follow
+  cancel-in-progress: false
+
+jobs:
+  follow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Resolve the published version
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          pinned="$(sed -n 's/^ARG KODIZM_ACP_VERSION=//p' Dockerfile)"
+          latest="$(npm view @kodizm/acp version)"
+          sdk="$(npm view "@kodizm/acp@${latest}" config.claudeAgentSdk)"
+          cli="$(npm view "@anthropic-ai/claude-agent-sdk@${sdk}" claudeCodeVersion)"
+
+          for value in "${pinned}" "${latest}" "${sdk}" "${cli}"; do
+            if ! [[ "${value}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Expected a version, got '${value}' (pinned '${pinned}', latest '${latest}', SDK '${sdk}', CLI '${cli}')."
+              exit 1
+            fi
+          done
+
+          # The release's own changelog entry says who made it. A failed lookup reads as "not a bot
+          # release", which only delays the follow until the next run.
+          bot=false
+          if gh api -H 'Accept: application/vnd.github.raw+json' "repos/kodizm/acp/contents/CHANGELOG.md?ref=v${latest}" \
+            | awk '/^## \[/{n++} n==1' | grep -F 'claude-stable-bump' > /dev/null; then
+            bot=true
+          fi
+
+          newest="$(printf '%s\n%s\n' "${pinned}" "${latest}" | sort -V | tail -n 1)"
+          changed=false
+          if [ "${latest}" != "${pinned}" ] && [ "${newest}" = "${latest}" ] && [ "${bot}" = true ]; then
+            changed=true
+          fi
+
+          {
+            echo "pinned=${pinned}"
+            echo "latest=${latest}"
+            echo "sdk=${sdk}"
+            echo "cli=${cli}"
+            echo "bot=${bot}"
+            echo "changed=${changed}"
+          } | tee -a "${GITHUB_OUTPUT}"
+
+      - name: Move the pin and start the build
+        if: steps.resolve.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LATEST: ${{ steps.resolve.outputs.latest }}
+          SDK: ${{ steps.resolve.outputs.sdk }}
+          CLI: ${{ steps.resolve.outputs.cli }}
+        run: |
+          set -euo pipefail
+          sed -i "s/^ARG KODIZM_ACP_VERSION=.*/ARG KODIZM_ACP_VERSION=${LATEST}/" Dockerfile
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -am "chore(deps): bump @kodizm/acp to ${LATEST}" -m "Installs Claude Code ${CLI} (SDK ${SDK})."
+          git push origin HEAD:main
+
+          started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          gh workflow run build.yml --ref main
+
+          run_id=""
+          for _ in $(seq 1 24); do
+            run_id="$(gh run list --workflow build.yml --branch main --event workflow_dispatch --limit 5 \
+              --json databaseId,createdAt --jq "[.[] | select(.createdAt >= \"${started}\")] | .[0].databaseId // empty")"
+            [ -n "${run_id}" ] && break
+            sleep 5
+          done
+          if [ -z "${run_id}" ]; then
+            echo "::error::build.yml did not start after the dispatch."
+            exit 1
+          fi
+
+          echo "Bumped @kodizm/acp to ${LATEST} (Claude Code ${CLI}); watching build run ${run_id}." | tee -a "${GITHUB_STEP_SUMMARY}"
+          gh run watch "${run_id}" --exit-status --interval 60
+
+      - name: Report when nothing changes
+        if: steps.resolve.outputs.changed != 'true'
+        env:
+          PINNED: ${{ steps.resolve.outputs.pinned }}
+          LATEST: ${{ steps.resolve.outputs.latest }}
+          BOT: ${{ steps.resolve.outputs.bot }}
+          CLI: ${{ steps.resolve.outputs.cli }}
+        run: |
+          if [ "${LATEST}" != "${PINNED}" ] && [ "${BOT}" != true ]; then
+            echo "Latest @kodizm/acp ${LATEST} is not a stable bump release; the pin stays at ${PINNED}." >> "${GITHUB_STEP_SUMMARY}"
+          else
+            echo "@kodizm/acp ${PINNED} is current (Claude Code ${CLI})." >> "${GITHUB_STEP_SUMMARY}"
+          fi

@@ -25,6 +25,8 @@ Every tool is pinned to an exact version in a `<TOOL>_VERSION` build arg, and th
 
 The Claude Code CLI has no arg of its own. The image reads the bridge's exact SDK pin (`config.claudeAgentSdk` in the `@kodizm/acp` package), takes the `claude` binary from that SDK version's `linux-x64` platform package, and fails the build unless its checksum matches the official release manifest. Bumping `KODIZM_ACP_VERSION` therefore moves the CLI too.
 
+Two daily workflows keep that CLI on the npm `stable` channel. `claude-stable-bump` in the `kodizm/acp` repository moves the SDK pin to the release that bundles the stable CLI and publishes a new `@kodizm/acp`. `acp-follow.yml` here then moves `KODIZM_ACP_VERSION` to that release, starts `build.yml` on `main` and waits for it; `:latest` still moves only after every gate of that build passes. A bridge release published by hand is not followed, so its pin moves by hand. Neither workflow rebuilds when nothing changed.
+
 ## Contract with Laravel
 
 - User `agent`, uid and gid 1001, `HOME=/home/agent`. Every tool the agent may update (Node, bun, Go, Flutter, LSP servers, opencode, the bridge) is owned by `agent` from the layer that installs it.
