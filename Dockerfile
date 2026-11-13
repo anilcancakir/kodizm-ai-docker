@@ -237,7 +237,7 @@ RUN mkdir /opt/kodizm/plugins/ac-lsp \
 
 # The bridge ships often, so it sits last; it carries its exact SDK pin in config.claudeAgentSdk.
 # renovate: datasource=npm depName=@kodizm/acp
-ARG KODIZM_ACP_VERSION=0.9.3
+ARG KODIZM_ACP_VERSION=0.9.4
 RUN npm_config_cache=/tmp/npm-cache npm install --global --no-fund --no-audit --omit=optional \
       "@kodizm/acp@${KODIZM_ACP_VERSION}" \
  && rm -rf /tmp/npm-cache
